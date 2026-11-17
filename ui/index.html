@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <title>REA Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">REA</span>
+        <div>
+          <h1>REA Studio</h1>
+          <p>Lokale Oberfläche für Reverse Engineering</p>
+        </div>
+      </div>
+      <div
+        class="connection"
+        id="connection"
+        title="Verbindung zum lokalen REA-Server"
+      >
+        <span class="connection-dot"></span>
+        <span id="connectionText">Verbinde …</span>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs" aria-label="Bereiche">
+      <button class="tab active" data-tab="start">Start</button>
+      <button class="tab" data-tab="apk">APK prüfen</button>
+      <button class="tab" data-tab="code">Apps &amp; Dateien</button>
+      <button class="tab" data-tab="mcp">MCP-Server</button>
+      <button class="tab" data-tab="commands">Alle Befehle</button>
+      <button class="tab" data-tab="help">Hilfe</button>
+    </nav>
+
+    <main>
+      <section class="panel active" data-panel="start">
+        <div class="hero">
+          <p class="eyebrow">Einfach anfangen</p>
+          <h2>Was möchtest du untersuchen?</h2>
+          <p class="lead">
+            Wähle einen Einstieg. Du musst keine REA-Befehle kennen. Alles läuft
+            lokal auf diesem Handy – die Datei wird nicht ins Internet
+            hochgeladen.
+          </p>
+          <div class="quick-grid">
+            <button class="quick-card" data-go="apk">
+              <span class="quick-icon">APK</span>
+              <strong>Android-App prüfen</strong>
+              <span>Signatur, Manifest, Klassen und Methoden ansehen.</span>
+            </button>
+            <button class="quick-card" data-go="code">
+              <span class="quick-icon">APP</span>
+              <strong>App oder Ordner analysieren</strong>
+              <span>JavaScript/Electron, native Binärdateien und Archive.</span>
+            </button>
+            <button class="quick-card" data-go="commands">
+              <span class="quick-icon">CLI</span>
+              <strong>Alle REA-Funktionen</strong>
+              <span>Durchsuchbare Befehlsliste mit Erklärungen.</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head">
+              <h3>Status</h3>
+              <button class="btn small" id="refreshStatus">Neu prüfen</button>
+            </div>
+            <div id="statusBox" class="status-box">
+              <p class="muted">Prüfe die Installation …</p>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>So funktioniert es</h3>
+            <ol class="steps">
+              <li>
+                <strong>Datei auswählen</strong
+                ><span>APK antippen oder einen Pfad eingeben.</span>
+              </li>
+              <li>
+                <strong>Aktion wählen</strong
+                ><span>Zum Beispiel „Überblick“ oder „Signatur“.</span>
+              </li>
+              <li>
+                <strong>Ergebnis lesen</strong
+                ><span
+                  >Die Ausgabe erscheint direkt darunter, mit Erklärung.</span
+                >
+              </li>
+            </ol>
+            <p class="hint">
+              Tipp: Die vollständigen Ergebnisse werden zusätzlich unter
+              <code>~/rea-artifacts/</code> gespeichert.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="apk">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Android</p>
+            <h2>APK prüfen</h2>
+            <p class="lead">
+              Die APK wird nur gelesen, niemals ausgeführt. Für Manifest und
+              Java-Code braucht REA zusätzlich JADX; für Ressourcen apktool.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <h3>1. APK auswählen</h3>
+          <div class="file-row">
+            <label class="file-button" for="apkFile">APK auswählen</label>
+            <input
+              id="apkFile"
+              type="file"
+              accept=".apk,.aab,.zip,application/vnd.android.package-archive"
+            />
+            <span class="hint"
+              >Bleibt lokal. Große Dateien können einige Sekunden
+              brauchen.</span
+            >
+          </div>
+          <div id="uploadProgress" class="progress hidden">
+            <div id="uploadBar"></div>
+          </div>
+          <p class="or">oder Pfad eingeben</p>
+          <div class="input-row">
+            <input
+              id="apkPath"
+              type="text"
+              placeholder="/storage/emulated/0/Download/app.apk"
+              autocomplete="off"
+            />
+            <button class="btn" id="useApkPath">Pfad übernehmen</button>
+          </div>
+          <div id="apkChosen" class="chosen hidden"></div>
+        </article>
+
+        <article class="card">
+          <h3>2. Was möchtest du wissen?</h3>
+          <div class="action-grid">
+            <div class="action">
+              <div>
+                <h4>Überblick</h4>
+                <p>
+                  Zeigt, was in der Datei steckt: Einträge, Typen, Größen und
+                  nächste Prüfschritte.
+                </p>
+                <p class="needs ok">Keine Zusatzwerkzeuge nötig</p>
+              </div>
+              <button class="btn primary" data-apk-action="overview">
+                Starten
+              </button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Signatur prüfen</h4>
+                <p>
+                  Prüft v1/v2/v3-Signaturen, Zertifikate, Fingerabdrücke und ob
+                  die Inhalte passen.
+                </p>
+                <p class="needs ok">Keine Zusatzwerkzeuge nötig</p>
+              </div>
+              <button class="btn primary" data-apk-action="signature">
+                Starten
+              </button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Manifest &amp; Komponenten</h4>
+                <p>
+                  Zeigt Paketname, Berechtigungen, Activities, Services und
+                  weitere Deklarationen.
+                </p>
+                <p class="needs">Braucht JADX</p>
+              </div>
+              <button class="btn" data-apk-action="manifest">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Klassen durchsuchen</h4>
+                <p>
+                  Findet Java/Kotlin-Klassen nach Namen. Leer lassen listet alle
+                  Klassen.
+                </p>
+                <p class="needs">Braucht JADX</p>
+              </div>
+              <button class="btn" data-apk-action="classes">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Methode anzeigen</h4>
+                <p>
+                  Dekompiliert genau eine Methode. Klasse und Methodenname exakt
+                  eingeben.
+                </p>
+                <p class="needs">Braucht JADX</p>
+              </div>
+              <button class="btn" data-apk-action="method">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Ressourcen (apktool)</h4>
+                <p>
+                  Liest Manifest, Ressourcen und Strings im Klartext. Nützlich
+                  für App-Namen und Texte.
+                </p>
+                <p class="needs">Braucht apktool</p>
+              </div>
+              <button class="btn" data-apk-action="resources">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>APK-Werkzeuge prüfen</h4>
+                <p>
+                  Prüft gezielt, welche Analysewerkzeuge für diese APK vorhanden
+                  sind.
+                </p>
+                <p class="needs ok">Empfohlen bei Fehlern</p>
+              </div>
+              <button class="btn" data-apk-action="doctor">Prüfen</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>3. Zusätzliche Angaben</h3>
+          <div class="grid two">
+            <label class="field">
+              <span>Klassenname für die Suche</span>
+              <input
+                id="classQuery"
+                type="text"
+                placeholder="z. B. MainActivity"
+                autocomplete="off"
+              />
+              <small
+                >Leer lassen, um alle Klassen aufzulisten. Groß-/Kleinschreibung
+                wird beachtet.</small
+              >
+            </label>
+            <label class="field">
+              <span>Klasse für „Methode anzeigen“</span>
+              <input
+                id="methodClass"
+                type="text"
+                placeholder="z. B. com.example.MainActivity"
+                autocomplete="off"
+              />
+              <small>Vollständiger Klassenname, exakt wie in der APK.</small>
+            </label>
+            <label class="field">
+              <span>Methodenname</span>
+              <input
+                id="methodName"
+                type="text"
+                placeholder="z. B. onCreate"
+                autocomplete="off"
+              />
+              <small>Nur der Methodenname, ohne Klammern.</small>
+            </label>
+            <label class="field">
+              <span>Overload-Index (optional)</span>
+              <input
+                id="overloadIndex"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+              />
+              <small
+                >Nur nötig, wenn mehrere Methoden denselben Namen haben.</small
+              >
+            </label>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel" data-panel="code">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Dateien &amp; Anwendungen</p>
+            <h2>Apps, Ordner und Binärdateien</h2>
+            <p class="lead">
+              Für JavaScript/Electron ist keine zusätzliche Engine nötig. Native
+              Binärdateien brauchen Ghidra, Hopper, IDA oder Kuna – der Status
+              oben zeigt, was vorhanden ist.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <label class="field">
+            <span>Pfad zur App, zum Ordner oder zur Datei</span>
+            <input
+              id="codePath"
+              type="text"
+              placeholder="/storage/emulated/0/Download/app.asar"
+              autocomplete="off"
+            />
+            <small
+              >Absoluter Pfad ist am zuverlässigsten. Ordner sind z. B.
+              entpackte Electron-Apps.</small
+            >
+          </label>
+          <div class="action-grid">
+            <div class="action">
+              <div>
+                <h4>Anwendung analysieren</h4>
+                <p>
+                  Allgemeiner Überblick über eine App oder ein Verzeichnis
+                  inklusive Struktur und Einstiegspunkten.
+                </p>
+              </div>
+              <button class="btn primary" data-code-action="analyze">
+                Starten
+              </button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>JavaScript/Electron rekonstruieren</h4>
+                <p>
+                  Findet Module, Imports, IPC-Grenzen und Quellcode ohne
+                  Ausführung der App.
+                </p>
+              </div>
+              <button class="btn primary" data-code-action="javascript">
+                Starten
+              </button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Technische Übersicht</h4>
+                <p>
+                  REA-Inspect für native Programme. Benötigt je nach Format
+                  einen Provider.
+                </p>
+              </div>
+              <button class="btn" data-code-action="inspect">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Härtung prüfen</h4>
+                <p>
+                  Prüft ELF/PE/Mach-O auf PIE, NX, RELRO und ähnliche
+                  Schutzmechanismen.
+                </p>
+              </div>
+              <button class="btn" data-code-action="hardening">Starten</button>
+            </div>
+            <div class="action">
+              <div>
+                <h4>Archiv entpacken</h4>
+                <p>
+                  Entpackt ein unterstütztes Archiv sicher in einen neuen
+                  Ordner. Zielordner muss noch nicht existieren.
+                </p>
+              </div>
+              <button class="btn" data-code-action="extract">Entpacken</button>
+            </div>
+          </div>
+          <label class="field">
+            <span>Zielordner für „Archiv entpacken“ (optional)</span>
+            <input
+              id="extractOut"
+              type="text"
+              placeholder="$HOME/rea-extract"
+              autocomplete="off"
+            />
+            <small
+              >Leer lassen für einen temporären Ordner. Ein vorhandener Ordner
+              wird nicht überschrieben.</small
+            >
+          </label>
+        </article>
+      </section>
+
+      <section class="panel" data-panel="mcp">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Agenten &amp; Clients</p>
+            <h2>MCP-Server</h2>
+            <p class="lead">
+              Der MCP-Server macht REA für Agenten und MCP-Clients verfügbar.
+              Auf dem Handy läuft er über termux-services; die Oberfläche kann
+              ihn starten und stoppen.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <h3>Dienststatus</h3>
+            <button class="btn small" id="refreshMcp">Aktualisieren</button>
+          </div>
+          <div id="mcpStatus" class="status-box">
+            <p class="muted">Prüfe …</p>
+          </div>
+          <div class="button-row">
+            <button class="btn primary" data-mcp-action="up">Starten</button>
+            <button class="btn" data-mcp-action="restart">Neu starten</button>
+            <button class="btn danger" data-mcp-action="down">Stoppen</button>
+            <button class="btn" id="loadMcpLog">Log anzeigen</button>
+          </div>
+          <p class="hint">
+            HTTP-Endpunkt: <code>http://127.0.0.1:8765/mcp</code>. Vom Laptop
+            erreichbar mit <code>adb forward tcp:8765 tcp:8765</code>.
+          </p>
+          <pre id="mcpLog" class="output hidden"></pre>
+        </article>
+      </section>
+
+      <section class="panel" data-panel="commands">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Fortgeschritten</p>
+            <h2>Alle REA-Befehle</h2>
+            <p class="lead">
+              Hier ist jeder Befehl aus <code>rea --help</code> versammelt. Die
+              Beschreibungen kommen von REA und sind Englisch. Für den Alltag
+              reichen die guided Bereiche.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <label class="field">
+            <span>Befehle durchsuchen</span>
+            <input
+              id="commandSearch"
+              type="search"
+              placeholder="z. B. apk, javascript, signature, adb …"
+              autocomplete="off"
+            />
+          </label>
+          <div id="commandList" class="command-list" aria-live="polite"></div>
+        </article>
+
+        <article class="card" id="commandRunner">
+          <h3>Befehl ausführen</h3>
+          <label class="field">
+            <span>Befehl</span>
+            <select id="commandSelect"></select>
+          </label>
+          <label class="field">
+            <span>Argumente</span>
+            <textarea
+              id="commandArgs"
+              rows="5"
+              spellcheck="false"
+              placeholder="--format md /storage/emulated/0/Download/app.apk"
+            ></textarea>
+            <small>
+              Wie in der Shell: Leerzeichen trennen Argumente, Anführungszeichen
+              schützen Pfade mit Leerzeichen. Der Befehl selbst wird nicht
+              wiederholt.
+            </small>
+          </label>
+          <div class="button-row">
+            <button class="btn primary" id="runCommand">Ausführen</button>
+            <button class="btn" id="commandHelp">Hilfe anzeigen</button>
+          </div>
+          <p class="hint">
+            Manche Befehle starten Prozesse, schreiben Dateien oder brauchen
+            zusätzliche Werkzeuge. Prüfe die Beschreibung, bevor du sie
+            ausführst.
+          </p>
+        </article>
+      </section>
+
+      <section class="panel" data-panel="help">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Nachschlagen</p>
+            <h2>Hilfe und Erklärungen</h2>
+            <p class="lead">
+              Die wichtigsten Begriffe und wie du an die richtigen Dateien
+              kommst.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>Wo liegen meine Dateien?</h3>
+            <ul class="help-list">
+              <li>
+                <code>~/storage/downloads/</code> – Downloads im Termux-Home.
+              </li>
+              <li>
+                <code>/storage/emulated/0/Download/</code> – der normale
+                Android-Downloads-Ordner.
+              </li>
+              <li>
+                <code>~/rea-artifacts/</code> – gespeicherte Evidenz aus dieser
+                Oberfläche.
+              </li>
+              <li>
+                <code>~/rea-ui/uploads/</code> – über die Oberfläche
+                hochgeladene Dateien.
+              </li>
+            </ul>
+            <p class="hint">
+              In Termux kannst du <code>ls ~/storage/downloads</code> eingeben,
+              um Dateinamen zu sehen.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Was brauche ich wofür?</h3>
+            <table class="help-table">
+              <thead>
+                <tr>
+                  <th>Aufgabe</th>
+                  <th>Voraussetzung</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>APK-Überblick, Signatur</td>
+                  <td>nichts Zusätzliches</td>
+                </tr>
+                <tr>
+                  <td>Manifest, Klassen, Methoden</td>
+                  <td>JADX + JDK</td>
+                </tr>
+                <tr>
+                  <td>Ressourcen/Strings</td>
+                  <td>apktool</td>
+                </tr>
+                <tr>
+                  <td>Native Binärdateien</td>
+                  <td>Ghidra, Hopper, IDA oder Kuna</td>
+                </tr>
+                <tr>
+                  <td>JavaScript/Electron</td>
+                  <td>nur Node.js</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="card">
+            <h3>Ergebnisse lesen</h3>
+            <p>
+              REA unterscheidet <strong>Beobachtungen</strong>,
+              <strong>Ableitungen</strong> und <strong>Unbekanntes</strong>.
+              „Coverage“ sagt, wie vollständig geprüft wurde. „Limitations“
+              nennt Grenzen. Fehlende Angaben sind oft absichtlich als unbekannt
+              markiert und keine behauptete Abwesenheit.
+            </p>
+            <p class="hint">
+              Große Ausgaben werden in der Oberfläche gekürzt. Die vollständige
+              Evidenz liegt als JSON unter <code>~/rea-artifacts/</code>.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>Wenn etwas fehlschlägt</h3>
+            <ul class="help-list">
+              <li>
+                „command not found“: REA ist nicht global installiert →
+                <code>HUSKY=0 npm link</code> in <code>~/rea</code>.
+              </li>
+              <li>
+                „jadx … not configured“: JADX/JDK fehlt. Der Status zeigt die
+                genaue Meldung.
+              </li>
+              <li>
+                „Is a directory“: Es wurde ein Ordner statt einer Datei
+                übergeben.
+              </li>
+              <li>
+                HTTP 406 auf <code>/mcp</code>: normal bei einem Browser-GET
+                ohne MCP-Header.
+              </li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <h3>Sicherheit</h3>
+            <p>
+              Die Oberfläche bindet standardmäßig nur an <code>127.0.0.1</code>.
+              Sie hat keine Anmeldung und darf nicht ohne Schutz im Netzwerk
+              freigegeben werden. Analysierte Dateien bleiben auf dem Gerät; REA
+              lädt sie nicht hoch.
+            </p>
+            <p class="hint">
+              Setze <code>REA_UI_HOST</code> nur bewusst, z. B. für einen
+              vertrauenswürdigen Test. Für den normalen Gebrauch leer lassen.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>MCP verbinden</h3>
+            <p>
+              Der MCP-Server läuft auf Port <code>8765</code>. Ein MCP-Client
+              auf dem Laptop erreicht ihn nach
+              <code>adb forward tcp:8765 tcp:8765</code> über
+              <code>http://127.0.0.1:8765/mcp</code>. Ein normales Browser-GET
+              auf diese URL ist kein gültiger MCP-Aufruf und kann 406 liefern.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <article class="card result-card hidden" id="resultCard">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow" id="resultLabel">Ergebnis</p>
+            <h3 id="resultTitle">Ausgabe</h3>
+          </div>
+          <div class="result-actions">
+            <button class="btn small" id="copyResult">Kopieren</button>
+            <button class="btn small" id="downloadResult">Speichern</button>
+            <button class="btn small ghost" id="closeResult">Schließen</button>
+          </div>
+        </div>
+        <div class="result-meta" id="resultMeta"></div>
+        <p class="hint result-help" id="resultHelp"></p>
+        <details class="command-box hidden" id="commandBox">
+          <summary>Ausgeführter Befehl</summary>
+          <code id="resultCommand"></code>
+        </details>
+        <pre class="output" id="resultOutput"></pre>
+        <pre class="output error-output hidden" id="resultError"></pre>
+      </article>
+    </main>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
