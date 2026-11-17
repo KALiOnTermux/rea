@@ -101,6 +101,7 @@ function showTab(name) {
   );
   window.scrollTo({ top: 0, behavior: "smooth" });
   if (name === "mcp") refreshMcp();
+  if (name === "web") refreshWebPreflight(false);
 }
 
 function renderStatus(data) {
@@ -288,6 +289,10 @@ const RESULT_HELP = [
     /^Technische Übersicht/,
     "Die Übersicht beschreibt Struktur und Metadaten. Für Code und Verhalten sind weitere, gezielte Schritte nötig.",
   ],
+  [
+    /^Web-App/,
+    "Die Aufnahme zeigt den beobachteten Lauf: Netzwerk, Events, DOM und Skripte. Login, Captcha und Serverlogik bleiben außen vor. Eine vollständige 1:1-Kopie ist damit nicht garantiert; die Beweise und exportierten Skripte liegen lokal.",
+  ],
 ];
 
 function helpForLabel(label) {
@@ -436,7 +441,11 @@ function showBlocked(label, title, message, check) {
   $("#commandBox").classList.add("hidden");
 
   const details = [message];
-  if (check?.detail) details.push(`Technische Meldung:\n${check.detail}`);
+  if (check?.technical) {
+    details.push(`Technische Meldung:\n${check.technical}`);
+  } else if (check?.detail) {
+    details.push(`Technische Meldung:\n${check.detail}`);
+  }
   if (check?.remediation) details.push(`Einrichtung:\n${check.remediation}`);
   details.push("Die Aktion wurde nicht gestartet.");
   $("#resultOutput").textContent = details.join("\n\n");
@@ -743,6 +752,138 @@ async function mcpAction(action) {
   }
 }
 
+function renderWebPreflight(data) {
+  const box = $("#webStatus");
+  const browser = data?.browser || data || {};
+  const ok = Boolean(browser.ok);
+  box.innerHTML = `
+    <div class="status-summary">
+      <span class="pill ${ok ? "good" : "warn"}">${ok ? "Browser bereit" : "Browser fehlt"}</span>
+      ${browser.source ? `<span class="pill">${escapeHtml(browser.source)}</span>` : ""}
+      ${browser.version ? `<span class="pill">${escapeHtml(browser.version)}</span>` : ""}
+    </div>
+    <div class="status-line ${ok ? "ok" : "bad"}">
+      <span class="mark">${ok ? "✓" : "!"}</span>
+      <div><strong>Chromium/Chrome</strong><span> ${escapeHtml(browser.path || browser.detail || "Nicht gefunden.")}</span>
+        ${!ok && browser.remediation ? `<small>${escapeHtml(browser.remediation)}</small>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+async function refreshWebPreflight(showToast = false) {
+  const path = expandHome($("#webBrowser").value);
+  $("#webStatus").innerHTML = `<p class="muted">Prüfe Browser …</p>`;
+  try {
+    const data = await api(
+      `/api/web/preflight${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    );
+    renderWebPreflight(data);
+    if (showToast) {
+      const browser = data.browser || {};
+      toast(
+        browser.ok
+          ? `Browser bereit: ${browser.path}`
+          : browser.detail || "Kein Browser gefunden.",
+        !browser.ok,
+      );
+    }
+    return data;
+  } catch (error) {
+    renderWebPreflight({
+      browser: { ok: false, detail: error.message, remediation: "" },
+    });
+    if (showToast) toast(error.message, true);
+    return { browser: { ok: false, detail: error.message } };
+  }
+}
+
+async function runWebAnalysis() {
+  if (state.busy) {
+    toast("Es läuft bereits ein Befehl. Bitte warte, bis er fertig ist.");
+    return;
+  }
+
+  const url = $("#webUrl").value.trim();
+  if (!url) {
+    toast("Bitte eine URL eingeben.", true);
+    $("#webUrl").focus();
+    return;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("Nur http:// und https:// werden unterstützt.");
+    }
+  } catch (error) {
+    toast(error.message || "Die URL ist ungültig.", true);
+    $("#webUrl").focus();
+    return;
+  }
+
+  const preflight = await refreshWebPreflight(false);
+  if (!preflight.browser?.ok) {
+    showBlocked(
+      "Web-App analysieren",
+      "Browser fehlt",
+      "Für die Aufnahme einer URL braucht REA Chromium oder Chrome. Die Aktion wurde nicht gestartet, damit du keine rohe Fehlermeldung bekommst.",
+      preflight.browser,
+    );
+    return;
+  }
+
+  const button = $("#runWeb");
+  const browserPath = expandHome($("#webBrowser").value);
+  const waitMs = Number($("#webWait").value) || 3000;
+  const clickSelectors = $("#webClicks")
+    .value.split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  state.busy = true;
+  button.disabled = true;
+  showResult("Web-App analysieren", ["web-app", url]);
+  try {
+    const result = await api("/api/web/analyze", {
+      method: "POST",
+      body: JSON.stringify({
+        url,
+        browserPath,
+        waitMs,
+        clickSelectors,
+        captureBodies: $("#webBodies").checked,
+        captureHeaders: $("#webHeaders").checked,
+        allowServiceWorkers: $("#webServiceWorkers").checked,
+      }),
+    });
+    renderResult(result, "Web-App analysieren", ["web-app", url]);
+    if (result.ok) {
+      toast("Aufnahme und Analyse sind fertig.");
+      refreshWebPreflight(false);
+    } else {
+      toast("Die Aufnahme wurde mit Hinweisen beendet.", true);
+    }
+  } catch (error) {
+    renderResult(
+      {
+        ok: false,
+        exitCode: null,
+        stdout: "",
+        stderr: error.message,
+        durationMs: 0,
+        timedOut: false,
+        truncated: false,
+      },
+      "Web-App analysieren",
+      ["web-app", url],
+    );
+    toast(error.message, true);
+  } finally {
+    state.busy = false;
+    button.disabled = false;
+  }
+}
+
 async function loadMcpLog() {
   const output = $("#mcpLog");
   output.classList.remove("hidden");
@@ -851,6 +992,12 @@ function bindEvents() {
     const command = $("#commandSelect").value;
     if (!command) return;
     await run([command, "--help"], `${command} --help`);
+  });
+
+  $("#runWeb").addEventListener("click", runWebAnalysis);
+  $("#checkWeb").addEventListener("click", () => refreshWebPreflight(true));
+  $("#webUrl").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") runWebAnalysis();
   });
 
   $("#refreshMcp").addEventListener("click", refreshMcp);

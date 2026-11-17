@@ -2,10 +2,24 @@
 
 import { spawn } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, readFile, stat, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import {
+  basename,
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  resolve,
+} from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -25,6 +39,7 @@ const HOST = process.env.REA_UI_HOST || "127.0.0.1";
 const MAX_UPLOAD = 512 * 1024 * 1024;
 const MAX_OUTPUT = 4 * 1024 * 1024;
 const UPLOAD_DIR = join(homedir(), "rea-ui", "uploads");
+const WEB_DIR = join(homedir(), "rea-ui", "web");
 const ARTIFACTS_DIR = join(homedir(), "rea-artifacts");
 const TERMUX = Boolean(
   process.env.TERMUX_VERSION || process.env.PREFIX?.includes("com.termux"),
@@ -35,6 +50,15 @@ const NO_OPEN = process.argv.includes("--no-open");
 
 const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const stripAnsi = (value) => value.replace(ANSI, "");
+const BROWSER_COMMANDS = [
+  "chromium",
+  "chromium-browser",
+  "google-chrome",
+  "google-chrome-stable",
+  "brave-browser",
+  "microsoft-edge",
+  "msedge",
+];
 
 let commandCache = null;
 let statusCache = null;
@@ -419,6 +443,850 @@ async function handleUpload(req, res, url) {
   }
 }
 
+async function isExecutableFile(path) {
+  try {
+    const info = await stat(path);
+    return (
+      info.isFile() &&
+      (process.platform === "win32" || (info.mode & 0o111) !== 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function findOnPath(name) {
+  for (const directory of (process.env.PATH || "").split(delimiter)) {
+    if (!directory) continue;
+    const candidate = join(directory, name);
+    if (await isExecutableFile(candidate)) return resolve(candidate);
+  }
+  return null;
+}
+
+async function findPlaywrightChrome() {
+  const base = join(homedir(), ".cache", "ms-playwright");
+  let entries;
+  try {
+    entries = await readdir(base, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const versions = entries
+    .filter((entry) => entry.isDirectory() && /^chromium-\d+$/.test(entry.name))
+    .sort((left, right) => right.name.localeCompare(left.name));
+  for (const version of versions) {
+    for (const relative of ["chrome-linux64/chrome", "chrome-linux/chrome"]) {
+      const candidate = join(base, version.name, relative);
+      if (await isExecutableFile(candidate)) return resolve(candidate);
+    }
+  }
+  return null;
+}
+
+async function probeBrowser(path) {
+  try {
+    const result = await runProcess(path, ["--version"], {
+      timeoutMs: 5000,
+      maxBytes: 64 * 1024,
+    });
+    const text = `${result.stdout}${result.stderr}`.trim();
+    if (result.ok && /chrom(e|ium)/i.test(text)) {
+      return { ok: true, version: text.slice(0, 200) };
+    }
+    return {
+      ok: false,
+      detail: text || `Browser beendet sich mit Exit ${result.exitCode}.`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function resolveBrowser(explicitPath = "") {
+  const requested = String(explicitPath || "").trim();
+  if (requested) {
+    if (!isAbsolute(requested)) {
+      return {
+        ok: false,
+        path: null,
+        detail: "Der Browser-Pfad muss absolut sein.",
+        remediation:
+          "Beispiel: /data/data/com.termux/files/usr/bin/chromium-browser",
+      };
+    }
+    if (!(await isExecutableFile(requested))) {
+      return {
+        ok: false,
+        path: null,
+        detail: `Der angegebene Browser ist nicht ausführbar: ${requested}`,
+        remediation:
+          "Prüfe den Pfad oder lasse das Feld leer, damit REA automatisch sucht.",
+      };
+    }
+    const probe = await probeBrowser(resolve(requested));
+    if (!probe.ok) {
+      return {
+        ok: false,
+        path: null,
+        detail: `Der Browser lässt sich nicht starten: ${probe.detail}`,
+        remediation:
+          "Installiere die fehlenden Browser-Abhängigkeiten oder wähle ein anderes Chromium/Chrome.",
+      };
+    }
+    return {
+      ok: true,
+      path: resolve(requested),
+      source: "Eigener Pfad",
+      version: probe.version,
+    };
+  }
+
+  const configured = String(process.env.REA_BROWSER_EXECUTABLE || "").trim();
+  if (configured && (await isExecutableFile(configured))) {
+    const probe = await probeBrowser(resolve(configured));
+    if (probe.ok) {
+      return {
+        ok: true,
+        path: resolve(configured),
+        source: "REA_BROWSER_EXECUTABLE",
+        version: probe.version,
+      };
+    }
+  }
+
+  let firstFailure = null;
+  for (const name of BROWSER_COMMANDS) {
+    for (const prefix of [process.env.PREFIX, process.env.TERMUX_PREFIX]) {
+      if (!prefix) continue;
+      const candidate = join(prefix, "bin", name);
+      if (await isExecutableFile(candidate)) {
+        const probe = await probeBrowser(resolve(candidate));
+        if (probe.ok) {
+          return {
+            ok: true,
+            path: resolve(candidate),
+            source: "Termux/PATH",
+            version: probe.version,
+          };
+        }
+        firstFailure ??= `${candidate}: ${probe.detail}`;
+      }
+    }
+    const found = await findOnPath(name);
+    if (found) {
+      const probe = await probeBrowser(found);
+      if (probe.ok) {
+        return {
+          ok: true,
+          path: found,
+          source: "PATH",
+          version: probe.version,
+        };
+      }
+      firstFailure ??= `${found}: ${probe.detail}`;
+    }
+  }
+
+  const playwrightChrome = await findPlaywrightChrome();
+  if (playwrightChrome) {
+    const probe = await probeBrowser(playwrightChrome);
+    if (probe.ok) {
+      return {
+        ok: true,
+        path: playwrightChrome,
+        source: "Playwright-Cache",
+        version: probe.version,
+      };
+    }
+    firstFailure ??= `${playwrightChrome}: ${probe.detail}`;
+  }
+
+  const missingLibrary = firstFailure
+    ? /error while loading shared libraries: ([^:]+):/.exec(firstFailure)?.[1]
+    : null;
+  return {
+    ok: false,
+    path: null,
+    detail: firstFailure
+      ? missingLibrary
+        ? `Ein gefundener Browser startet nicht, weil ${missingLibrary} fehlt.`
+        : "Ein gefundener Browser startet nicht. Prüfe die Browser-Installation."
+      : configured
+        ? `REA_BROWSER_EXECUTABLE ist nicht ausführbar: ${configured}`
+        : "Kein Chromium/Chrome gefunden.",
+    technical: firstFailure,
+    remediation:
+      "Installiere Chromium oder Chrome und trage den absoluten Pfad ein; alternativ REA_BROWSER_EXECUTABLE setzen.",
+  };
+}
+
+async function getWebPreflight(explicitPath = "") {
+  return { browser: await resolveBrowser(explicitPath) };
+}
+
+function normalizeWebUrl(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    throw Object.assign(new Error("Bitte eine URL eingeben."), {
+      statusCode: 400,
+    });
+  }
+  if (value.length > 8192) {
+    throw Object.assign(new Error("Die URL ist zu lang."), { statusCode: 400 });
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw Object.assign(
+      new Error("Die URL ist ungültig. Beispiel: https://example.com"),
+      { statusCode: 400 },
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw Object.assign(
+      new Error("Nur http:// und https:// werden unterstützt."),
+      { statusCode: 400 },
+    );
+  }
+  if (parsed.username || parsed.password) {
+    throw Object.assign(
+      new Error(
+        "URLs mit Benutzername oder Passwort werden nicht unterstützt.",
+      ),
+      { statusCode: 400 },
+    );
+  }
+  return parsed.toString();
+}
+
+function parseClickSelectors(input) {
+  const values = Array.isArray(input)
+    ? input
+    : String(input ?? "").split(/\r?\n/);
+  const selectors = values
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  if (selectors.length > 20) {
+    throw Object.assign(new Error("Maximal 20 Klick-Schritte."), {
+      statusCode: 400,
+    });
+  }
+  for (const selector of selectors) {
+    if (selector.length > 500 || selector.includes("\0")) {
+      throw Object.assign(new Error("Ein CSS-Selektor ist ungültig."), {
+        statusCode: 400,
+      });
+    }
+  }
+  return selectors;
+}
+
+function buildWebScenario({
+  url,
+  browserPath,
+  waitMs,
+  selectors,
+  captureBodies,
+  captureHeaders,
+  allowServiceWorkers,
+}) {
+  const actions = [
+    { step_id: "settle", action: "wait_for_timeout", duration_ms: waitMs },
+  ];
+  selectors.forEach((selector, index) => {
+    actions.push({
+      step_id: `click_${index + 1}`,
+      action: "click",
+      locator: { kind: "css", selector },
+      timeout_ms: 5000,
+    });
+    actions.push({
+      step_id: `after_click_${index + 1}`,
+      action: "wait_for_timeout",
+      duration_ms: 800,
+    });
+  });
+
+  return {
+    browser: {
+      mode: "launch",
+      executable_path: browserPath,
+      headless: true,
+    },
+    start_url: { url },
+    environment: {
+      viewport: { width: 1280, height: 720, device_scale_factor: 1 },
+      locale: "de-DE",
+      timezone: "Europe/Berlin",
+      service_workers: allowServiceWorkers ? "allow" : "block",
+    },
+    actions,
+    capture: {
+      after_each_step:
+        selectors.length > 0 ? ["url", "dom", "accessibility"] : [],
+      at_end: ["url", "dom", "accessibility", "history", "storage"],
+      events: [
+        "console",
+        "page-errors",
+        "network",
+        "websockets",
+        "frames",
+        "workers",
+        "popups",
+        "downloads",
+      ],
+      network: {
+        request_body: captureBodies,
+        response_body: captureBodies,
+        header_values: captureHeaders,
+      },
+    },
+    command_timeout_ms: 30000,
+  };
+}
+
+function parseJsonOutput(result) {
+  const text = String(result?.stdout || "").trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function countFiles(directory) {
+  let count = 0;
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch {
+    return count;
+  }
+  for (const entry of entries) {
+    const full = join(directory, entry.name);
+    if (entry.isDirectory()) count += await countFiles(full);
+    else if (entry.isFile()) count += 1;
+  }
+  return count;
+}
+
+function browserUrl(value) {
+  if (value && typeof value === "object") return value.url || null;
+  return typeof value === "string" ? value : null;
+}
+
+function summarizeCapture(capture) {
+  if (!capture || typeof capture !== "object") return null;
+  const events = Array.isArray(capture.events?.items)
+    ? capture.events.items
+    : [];
+  const kinds = new Map();
+  const transactions = new Map();
+  for (const event of events) {
+    if (!event || typeof event !== "object") continue;
+    if (event.kind) kinds.set(event.kind, (kinds.get(event.kind) || 0) + 1);
+    if (!event.transaction_id) continue;
+    let transaction = transactions.get(event.transaction_id);
+    if (!transaction) {
+      transaction = {
+        origins: new Set(),
+        types: new Set(),
+        statuses: new Set(),
+        failed: false,
+        method: null,
+        url: null,
+        status: null,
+        sequence: null,
+      };
+      transactions.set(event.transaction_id, transaction);
+    }
+    if (event.url?.origin) transaction.origins.add(event.url.origin);
+    if (event.resource_type) transaction.types.add(event.resource_type);
+    if (event.kind === "request") {
+      transaction.method = event.method || transaction.method;
+      transaction.sequence ??= Number.isInteger(event.sequence)
+        ? event.sequence
+        : null;
+    }
+    if (event.kind === "response" && Number.isInteger(event.status)) {
+      transaction.statuses.add(event.status);
+      transaction.status = event.status;
+    }
+    if (event.kind === "request-failed") transaction.failed = true;
+    transaction.url = browserUrl(event.url) || transaction.url;
+  }
+
+  const origins = new Map();
+  const types = new Map();
+  const statuses = new Map();
+  for (const transaction of transactions.values()) {
+    const origin =
+      transaction.origins.size === 1
+        ? transaction.origins.values().next().value
+        : null;
+    origins.set(origin, (origins.get(origin) || 0) + 1);
+    const type =
+      transaction.types.size === 1
+        ? transaction.types.values().next().value
+        : null;
+    types.set(type, (types.get(type) || 0) + 1);
+    const status =
+      transaction.statuses.size === 1
+        ? transaction.statuses.values().next().value
+        : null;
+    const statusClass =
+      status === null
+        ? transaction.failed
+          ? "failed"
+          : "unknown"
+        : `${Math.floor(status / 100)}xx`;
+    statuses.set(statusClass, (statuses.get(statusClass) || 0) + 1);
+  }
+
+  const steps = Array.isArray(capture.steps)
+    ? capture.steps.map((step) => ({
+        step_index: step.step_index,
+        step_id: step.step_id,
+        action: step.action,
+        status: step.status,
+        error: step.error,
+        elapsed_ms: step.elapsed_ms,
+        before_url: step.before_url,
+        after_url: step.after_url,
+        events: step.events,
+        completeness: step.completeness,
+      }))
+    : [];
+  const networkContent = capture.scenario?.network_content;
+  const selectedNetwork =
+    Boolean(networkContent) && Object.values(networkContent).some(Boolean);
+
+  const requests = [...transactions.values()]
+    .filter((transaction) => transaction.url)
+    .sort(
+      (left, right) =>
+        (left.sequence ?? Infinity) - (right.sequence ?? Infinity),
+    )
+    .slice(0, 50)
+    .map((transaction) => ({
+      method: transaction.method || "?",
+      url: transaction.url,
+      status: transaction.status,
+      failed: transaction.failed,
+      resource_type:
+        transaction.types.size === 1
+          ? transaction.types.values().next().value
+          : null,
+    }));
+
+  return {
+    browser: capture.browser,
+    scenario: capture.scenario,
+    duration_ms: capture.duration_ms,
+    completeness: capture.completeness,
+    steps,
+    events: {
+      retained: capture.events?.retained ?? events.length,
+      dropped: capture.events?.dropped ?? 0,
+      by_kind: [...kinds].map(([kind, count]) => ({ kind, count })),
+      omissions: capture.events?.omissions ?? {
+        by_kind: [],
+        network_transactions: 0,
+        network_transaction_range: null,
+      },
+    },
+    network: {
+      selected: selectedNetwork,
+      transactions: transactions.size,
+      without_request: 0,
+      ambiguous_transactions: 0,
+      failed_transactions: [...transactions.values()].filter(
+        (transaction) => transaction.failed,
+      ).length,
+      by_origin: [...origins].map(([origin, count]) => ({
+        origin,
+        transactions: count,
+      })),
+      by_resource_type: [...types].map(([resource_type, count]) => ({
+        resource_type,
+        transactions: count,
+      })),
+      by_status_class: [...statuses].map(([status_class, count]) => ({
+        status_class,
+        transactions: count,
+      })),
+      requests,
+    },
+    limitation_count: Array.isArray(capture.limitations)
+      ? capture.limitations.length
+      : 0,
+  };
+}
+
+function listCounts(items, render) {
+  if (!Array.isArray(items) || items.length === 0) return "keine";
+  return items.map(render).join(", ");
+}
+
+function buildWebReport({
+  url,
+  captureSummary,
+  captureResult,
+  capturePath,
+  exportResult,
+  scriptsDir,
+  analysisInput,
+  fileCount,
+  analysisResult,
+  analysisSummary,
+  analysisEvidence,
+}) {
+  const steps = Array.isArray(captureSummary?.steps)
+    ? captureSummary.steps
+    : [];
+  const finalStep = steps.at(-1);
+  const finalUrl =
+    browserUrl(finalStep?.after_url) ||
+    browserUrl(captureSummary?.scenario?.start_url) ||
+    url;
+  const network = captureSummary?.network;
+  const events = captureSummary?.events;
+  const durationMs = captureSummary?.duration_ms ?? captureResult?.durationMs;
+  const lines = ["# Web-App-Aufnahme", ""];
+  lines.push(`- Start-URL: ${url}`);
+  lines.push(`- End-URL: ${finalUrl}`);
+  lines.push(`- Aufnahme: ${Math.round(Number(durationMs) || 0)} ms`);
+  const missingSections = Array.isArray(
+    captureSummary?.completeness?.missing_sections,
+  )
+    ? captureSummary.completeness.missing_sections
+    : [];
+  lines.push(
+    `- Vollständigkeit: ${captureSummary?.completeness?.status || "unbekannt"}${missingSections.length > 0 ? ` (fehlende Abschnitte: ${missingSections.join(", ")})` : ""}`,
+  );
+  lines.push(`- Schritte: ${steps.length > 0 ? steps.length : "keine"}`);
+
+  if (network) {
+    lines.push("", "## Netzwerk");
+    lines.push(`- Transaktionen: ${network.transactions ?? "unbekannt"}`);
+    lines.push(`- Fehlgeschlagen: ${network.failed_transactions ?? 0}`);
+    lines.push(
+      `- Statusklassen: ${listCounts(network.by_status_class, (item) => `${item.status_class}: ${item.transactions}`)}`,
+    );
+    lines.push(
+      `- Typen: ${listCounts(network.by_resource_type, (item) => `${item.resource_type || "unbekannt"}: ${item.transactions}`)}`,
+    );
+    lines.push(
+      `- Origins: ${listCounts(network.by_origin, (item) => `${item.origin || "unbekannt"}: ${item.transactions}`)}`,
+    );
+    if (Array.isArray(network.requests) && network.requests.length > 0) {
+      lines.push("", "## Kommunikation");
+      for (const request of network.requests.slice(0, 25)) {
+        const status =
+          request.status ?? (request.failed ? "Netzwerkfehler" : "offen");
+        const url = String(request.url);
+        lines.push(
+          `- ${request.method} ${url.length > 180 ? `${url.slice(0, 177)}...` : url} → ${status}${request.resource_type ? ` (${request.resource_type})` : ""}`,
+        );
+      }
+      if (network.requests.length > 25) {
+        lines.push(
+          `- ... ${network.requests.length - 25} weitere Transaktionen in der Aufnahme-Evidenz.`,
+        );
+      }
+    }
+  }
+
+  if (events) {
+    lines.push("", "## Ereignisse");
+    lines.push(`- Behalten: ${events.retained ?? 0}`);
+    lines.push(`- Verworfen: ${events.dropped ?? 0}`);
+    lines.push(
+      `- Arten: ${listCounts(events.by_kind, (item) => `${item.kind}: ${item.count}`)}`,
+    );
+  }
+
+  if (steps.length > 0) {
+    lines.push("", "## Schritte");
+    for (const step of steps) {
+      lines.push(
+        `- ${step.action}: ${step.status} → ${browserUrl(step.after_url) || "?"} (${step.elapsed_ms ?? "?"} ms)`,
+      );
+    }
+  }
+
+  lines.push("", "## Skripte und Code");
+  if (!exportResult) {
+    lines.push(
+      "- Kein Skript-Export, weil die Aufnahme nicht abgeschlossen wurde.",
+    );
+  } else {
+    lines.push(
+      `- Export: ${exportResult.ok ? "erfolgreich" : "mit Hinweisen"}`,
+    );
+    lines.push(`- JavaScript-Dateien: ${fileCount}`);
+    lines.push(`- Ordner: ${analysisInput || scriptsDir}`);
+  }
+
+  if (analysisResult) {
+    lines.push("", "## JavaScript-Analyse");
+    const statistics = analysisSummary?.statistics;
+    if (!analysisResult.ok) {
+      lines.push("- Status: mit Hinweisen; Details stehen in der Evidenz.");
+    }
+    if (statistics) {
+      lines.push(
+        `- Geparste JavaScript-Dateien: ${statistics.parsed_javascript_files ?? 0}`,
+      );
+      lines.push(`- Relevante Dateien: ${statistics.relevant_files ?? 0}`);
+      lines.push(`- AST-Knoten: ${statistics.visited_ast_nodes ?? 0}`);
+      lines.push(`- Findings: ${statistics.findings ?? 0}`);
+      lines.push(`- Module: ${statistics.modules ?? 0}`);
+      lines.push(`- Parse-Fehler: ${statistics.parse_failures ?? 0}`);
+      lines.push(
+        `- Anwendungsabdeckung: ${analysisSummary?.coverage?.application?.status ?? "unbekannt"}`,
+      );
+      lines.push(
+        `- Analyse-Einschränkungen: ${analysisSummary?.limitation_count ?? 0}`,
+      );
+    } else {
+      lines.push(
+        "- Die Analyse ist gespeichert, aber die Zusammenfassung konnte nicht gelesen werden.",
+      );
+    }
+  }
+
+  lines.push("", "## Beweise");
+  lines.push(`- Aufnahme: ${capturePath}`);
+  lines.push(`- Skripte: ${scriptsDir}`);
+  if (analysisEvidence) lines.push(`- Analyse: ${analysisEvidence}`);
+
+  lines.push("", "## Grenzen");
+  lines.push(
+    "- Die Aufnahme zeigt, was der Browser in diesem Lauf gesehen hat. Sie ist kein Beweis für die komplette Anwendung.",
+  );
+  lines.push(
+    "- Login, Captcha, serverseitige Logik, nicht ausgelöste Interaktionen und fremde Origins können fehlen.",
+  );
+  lines.push(
+    `- REA meldet ${captureSummary?.limitation_count ?? "unbekannt"} Einschränkung(en); die vollständige Evidenz enthält die Details.`,
+  );
+  lines.push(
+    "- Die statische JavaScript-Analyse zeigt Code und Kandidaten, keine garantierte Laufzeitidentität.",
+  );
+
+  return lines.join("\n");
+}
+
+async function handleWebAnalyze(req, res) {
+  const started = Date.now();
+  const body = await readJsonBody(req, 1_000_000);
+  const url = normalizeWebUrl(body?.url);
+  const browser = await resolveBrowser(body?.browserPath || "");
+  if (!browser.ok) {
+    json(res, 503, {
+      error: browser.detail,
+      preflight: { browser },
+    });
+    return;
+  }
+
+  const requestedWait = Number(body?.waitMs);
+  const waitMs = Math.min(
+    Math.max(Number.isFinite(requestedWait) ? requestedWait : 3000, 500),
+    30000,
+  );
+  const selectors = parseClickSelectors(body?.clickSelectors);
+  const captureBodies = body?.captureBodies !== false;
+  const captureHeaders = body?.captureHeaders !== false;
+  const allowServiceWorkers = body?.allowServiceWorkers !== false;
+
+  const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+  const runDir = join(WEB_DIR, runId);
+  const scenarioPath = join(runDir, "scenario.json");
+  const capturePath = join(runDir, "capture-evidence.json");
+  const scriptsDir = join(runDir, "scripts");
+  const scenario = buildWebScenario({
+    url,
+    browserPath: browser.path,
+    waitMs,
+    selectors,
+    captureBodies,
+    captureHeaders,
+    allowServiceWorkers,
+  });
+
+  await mkdir(runDir, { recursive: true });
+  await writeFile(scenarioPath, JSON.stringify(scenario, null, 2), {
+    encoding: "utf8",
+    flag: "wx",
+  });
+
+  const captureResult = await runRea(
+    [
+      "capture-browser-scenario",
+      scenarioPath,
+      "--detail",
+      "complete",
+      "--format",
+      "json",
+    ],
+    { timeoutMs: 120_000, maxBytes: 32 * 1024 * 1024 },
+  );
+  const capturePayload = parseJsonOutput(captureResult);
+  const captureData =
+    capturePayload?.normalized_result ?? capturePayload?.capture ?? null;
+  const captureSummary = summarizeCapture(captureData);
+  const errors = [];
+  let captureWritten = false;
+
+  if (!captureResult.ok) {
+    errors.push(
+      capturePayload?.message ||
+        capturePayload?.error ||
+        captureResult.stderr.trim() ||
+        "Die Browser-Aufnahme ist fehlgeschlagen.",
+    );
+  } else if (captureResult.truncated) {
+    errors.push(
+      "Die Aufnahme war zu groß für die Oberfläche. Erhöhe nicht das Limit, sondern analysiere eine kleinere Seite oder nutze die CLI direkt.",
+    );
+  } else if (!capturePayload) {
+    errors.push("Die Aufnahme lieferte keine lesbare JSON-Evidenz.");
+  } else {
+    try {
+      await writeFile(capturePath, captureResult.stdout, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      captureWritten = true;
+    } catch (error) {
+      errors.push(
+        `Die Aufnahme konnte nicht gespeichert werden: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  let exportResult = null;
+  let exportPayload = null;
+  let analysisInput = null;
+  let fileCount = 0;
+  let analysisResult = null;
+  let analysisSummary = null;
+  let analysisEvidence = null;
+
+  if (captureWritten) {
+    exportResult = await runRea(
+      ["export-web-scripts", capturePath, scriptsDir, "--format", "json"],
+      { timeoutMs: 120_000, maxBytes: 16 * 1024 * 1024 },
+    );
+    exportPayload = parseJsonOutput(exportResult);
+    const declaredInput =
+      exportPayload?.normalized_result?.analysis_input?.input_path ??
+      exportPayload?.summary?.normalized_result?.analysis_input?.input_path ??
+      exportPayload?.analysis_input?.input_path ??
+      exportPayload?.analysis_input?.path ??
+      null;
+    analysisInput =
+      declaredInput && existsSync(declaredInput)
+        ? declaredInput
+        : join(scriptsDir, "files");
+    if (existsSync(analysisInput)) {
+      fileCount = await countFiles(analysisInput);
+    }
+    if (!exportResult.ok) {
+      errors.push(
+        exportPayload?.message ||
+          exportPayload?.error ||
+          exportResult.stderr.trim() ||
+          "Der Skript-Export ist fehlgeschlagen.",
+      );
+    } else if (fileCount > 0) {
+      analysisEvidence = join(runDir, "analysis-evidence.json");
+      analysisResult = await runRea(
+        [
+          "analyze-javascript-application",
+          analysisInput,
+          "--format",
+          "json",
+          "--detail",
+          "summary",
+          "--evidence_output",
+          analysisEvidence,
+        ],
+        { timeoutMs: 300_000, maxBytes: 16 * 1024 * 1024 },
+      );
+      const analysisPayload = parseJsonOutput(analysisResult);
+      analysisSummary =
+        analysisPayload?.summary?.normalized_result?.summary ??
+        analysisPayload?.normalized_result?.summary ??
+        null;
+      if (!analysisResult.ok) {
+        errors.push(
+          analysisPayload?.message ||
+            analysisPayload?.error ||
+            analysisResult.stderr.trim() ||
+            "Die JavaScript-Analyse ist fehlgeschlagen.",
+        );
+      }
+    }
+  }
+
+  const ok =
+    captureWritten &&
+    (!exportResult || exportResult.ok) &&
+    (!analysisResult || analysisResult.ok);
+  const report = buildWebReport({
+    url,
+    captureSummary,
+    captureResult,
+    capturePath,
+    exportResult,
+    scriptsDir,
+    analysisInput,
+    fileCount,
+    analysisResult,
+    analysisSummary,
+    analysisEvidence,
+  });
+
+  json(res, 200, {
+    ok,
+    exitCode:
+      captureResult.exitCode ??
+      exportResult?.exitCode ??
+      analysisResult?.exitCode ??
+      null,
+    stdout: report,
+    stderr: errors.join("\n\n"),
+    durationMs: Date.now() - started,
+    timedOut: Boolean(
+      captureResult.timedOut ||
+      exportResult?.timedOut ||
+      analysisResult?.timedOut,
+    ),
+    truncated: Boolean(
+      captureResult.truncated ||
+      exportResult?.truncated ||
+      analysisResult?.truncated,
+    ),
+    command: `web-app ${url}`,
+    artifacts: {
+      scenario: scenarioPath,
+      capture: capturePath,
+      scripts: scriptsDir,
+      analysisInput,
+      analysisEvidence,
+    },
+  });
+}
+
 async function handleMcpStatus() {
   try {
     const result = await runProcess("sv", ["status", "rea-mcp"], {
@@ -647,6 +1515,16 @@ const server = createServer(async (req, res) => {
         path: join(ARTIFACTS_DIR, `${label}-${stamp}.json`),
         directory: ARTIFACTS_DIR,
       });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/web/preflight") {
+      json(res, 200, await getWebPreflight(url.searchParams.get("path") || ""));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/web/analyze") {
+      await handleWebAnalyze(req, res);
       return;
     }
 

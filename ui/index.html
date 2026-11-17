@@ -31,6 +31,7 @@
 
     <nav class="tabs" id="tabs" aria-label="Bereiche">
       <button class="tab active" data-tab="start">Start</button>
+      <button class="tab" data-tab="web">Web-App</button>
       <button class="tab" data-tab="apk">APK prüfen</button>
       <button class="tab" data-tab="code">Apps &amp; Dateien</button>
       <button class="tab" data-tab="mcp">MCP-Server</button>
@@ -49,6 +50,14 @@
             hochgeladen.
           </p>
           <div class="quick-grid">
+            <button class="quick-card" data-go="web">
+              <span class="quick-icon">URL</span>
+              <strong>Website oder Web-App analysieren</strong>
+              <span
+                >URL eingeben, Netzwerk, Events, DOM und Skripte
+                aufnehmen.</span
+              >
+            </button>
             <button class="quick-card" data-go="apk">
               <span class="quick-icon">APK</span>
               <strong>Android-App prüfen</strong>
@@ -102,6 +111,143 @@
             </p>
           </article>
         </div>
+      </section>
+
+      <section class="panel" data-panel="web">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Website &amp; Web-App</p>
+            <h2>URL aufnehmen und verstehen</h2>
+            <p class="lead">
+              REA startet einen eigenen, temporären Chromium-Browser, lädt die
+              URL und nimmt DOM, Netzwerk, Konsole, Events und Skripte auf.
+              Danach werden die JavaScript-Dateien statisch analysiert. Das ist
+              eine belastbare Bestandsaufnahme – kein Versprechen, eine fremde
+              App vollständig 1:1 zu kopieren.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <h3>1. Seite auswählen</h3>
+          <label class="field">
+            <span>Website oder Web-App (URL)</span>
+            <input
+              id="webUrl"
+              type="url"
+              placeholder="https://example.com"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <small
+              >Nur öffentlich erreichbare http(s)-Seiten. Login, Captcha und
+              Seiten, für die du keine Erlaubnis hast, gehören nicht
+              dazu.</small
+            >
+          </label>
+          <label class="field">
+            <span>Browser-Programm (optional)</span>
+            <input
+              id="webBrowser"
+              type="text"
+              placeholder="Leer lassen: REA sucht Chromium/Chrome"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <small
+              >Absoluter Pfad zu Chromium oder Chrome. Leer lassen für die
+              automatische Suche in Termux, PATH und im Playwright-Cache.</small
+            >
+          </label>
+          <div class="grid two">
+            <label class="field">
+              <span>Wartezeit nach dem Laden (ms)</span>
+              <input
+                id="webWait"
+                type="number"
+                min="500"
+                max="30000"
+                step="500"
+                value="3000"
+              />
+              <small
+                >Mehr Zeit für Nachladen, Animationen und Hintergrundanfragen.
+                Standard: 3000 ms.</small
+              >
+            </label>
+            <label class="field">
+              <span>Klick-Schritte (optional)</span>
+              <textarea
+                id="webClicks"
+                rows="4"
+                spellcheck="false"
+                placeholder="#login
+button.buy
+[data-testid='search']"
+              ></textarea>
+              <small
+                >Eine CSS-Auswahl pro Zeile. REA klickt der Reihe nach und nimmt
+                die Reaktionen auf. Maximal 20 Schritte.</small
+              >
+            </label>
+          </div>
+          <div class="check-row">
+            <label>
+              <input id="webBodies" type="checkbox" checked />
+              <span>Request-/Response-Bodies aufnehmen</span>
+            </label>
+            <label>
+              <input id="webHeaders" type="checkbox" checked />
+              <span
+                >Header-Werte aufnehmen (Zugangsdaten werden redigiert)</span
+              >
+            </label>
+            <label>
+              <input id="webServiceWorkers" type="checkbox" checked />
+              <span>Service Worker zulassen</span>
+            </label>
+          </div>
+          <div class="button-row">
+            <button class="btn primary" id="runWeb">Web-App analysieren</button>
+            <button class="btn" id="checkWeb">Browser prüfen</button>
+          </div>
+          <div id="webStatus" class="status-box">
+            <p class="muted">Browser wird beim ersten Start geprüft …</p>
+          </div>
+          <p class="hint">
+            Die Aufnahme kann vertrauliche Inhalte enthalten und bleibt lokal
+            unter <code>~/rea-artifacts/</code> und <code>~/rea-ui/web/</code>.
+            Analysiere nur Seiten, für die du die Erlaubnis hast.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>2. Was REA daraus macht</h3>
+          <ul class="help-list">
+            <li>
+              <strong>Netzwerk:</strong> Requests, Antworten, Status, Typen,
+              Origins und – wenn aktiviert – Bodies und Header.
+            </li>
+            <li>
+              <strong>Events:</strong> Konsole, Seitenfehler, WebSockets,
+              Frames, Worker, Popups und Downloads.
+            </li>
+            <li>
+              <strong>Oberfläche:</strong> DOM, barrierefreier Baum, Verlauf und
+              Storage-Fingerabdrücke.
+            </li>
+            <li>
+              <strong>Code:</strong> Skripte werden exportiert und ohne
+              Ausführung statisch auf Module, Importe, Endpunkte und Datenflüsse
+              untersucht.
+            </li>
+          </ul>
+          <p class="hint">
+            Klick-Schritte sind der einfache Weg, Reaktionen auszulösen. Für
+            Login-Formulare, Captchas oder mehrere getrennte Sitzungen brauchst
+            du weiterhin manuelle Schritte und ggf. einen eigenen Browser.
+          </p>
+        </article>
       </section>
 
       <section class="panel" data-panel="apk">
@@ -545,6 +691,10 @@
                 <tr>
                   <td>JavaScript/Electron</td>
                   <td>nur Node.js</td>
+                </tr>
+                <tr>
+                  <td>Website/Web-App per URL</td>
+                  <td>Chromium oder Chrome</td>
                 </tr>
               </tbody>
             </table>
