@@ -1,0 +1,25 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+exec 2>&1
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+REA_ENV="$PREFIX/etc/rea-mcp.env"
+
+if [ ! -r "$REA_ENV" ]; then
+  printf 'REA MCP service configuration is missing: %s\n' "$REA_ENV" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+. "$REA_ENV"
+: "${REA_ROOT:?REA_ROOT is missing from $REA_ENV}"
+: "${NODE_BIN:?NODE_BIN is missing from $REA_ENV}"
+: "${REA_MCP_PORT:?REA_MCP_PORT is missing from $REA_ENV}"
+
+export PATH="$PREFIX/bin:$PATH"
+export HOME="${HOME:-$PREFIX/../home}"
+export TMPDIR="${TMPDIR:-$PREFIX/tmp}"
+[ -d "$TMPDIR" ] || mkdir -p "$TMPDIR" 2>/dev/null || true
+
+cd "$REA_ROOT" || exit 1
+exec "$NODE_BIN" "$REA_ROOT/scripts/rea.mjs" mcp --http --port "$REA_MCP_PORT"

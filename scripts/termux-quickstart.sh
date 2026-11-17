@@ -16,6 +16,7 @@ Install the Termux build prerequisites, build REA, and start its MCP server.
 Options:
   --http            Start MCP over streamable HTTP (default).
   --stdio           Start MCP over stdio for a client that launches it.
+  --build-only      Build REA and exit; do not start MCP.
   --port <port>     HTTP port (default: 8765; also REA_MCP_PORT).
   --browser         Also install x11-repo and Chromium for browser scenarios.
   --no-browser      Do not install Chromium (default).
@@ -48,6 +49,10 @@ while (($# > 0)); do
       ;;
     --stdio)
       MODE="stdio"
+      shift
+      ;;
+    --build-only)
+      MODE="build-only"
       shift
       ;;
     --port)
@@ -153,6 +158,11 @@ fi
 
 if [ "${REA_TERMUX_SKIP_BUILD:-0}" != "1" ]; then
   npm run build:termux
+fi
+
+if [ "$MODE" = "build-only" ]; then
+  printf 'Build complete. Install the supervised MCP service with:\n  %s/scripts/termux-service.sh\n' "$REPO_ROOT"
+  exit 0
 fi
 
 if command -v termux-wake-lock >/dev/null 2>&1; then

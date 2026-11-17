@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+LOGDIR="${LOGDIR:-$PREFIX/var/log}"
+export LOGDIR
+exec "$PREFIX/share/termux-services/svlogger"
