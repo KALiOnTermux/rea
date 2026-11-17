@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = join(root, "dist", "cli-runtime", "cli.js");
+const source = join(root, "src");
 
 async function exists(path) {
   try {
@@ -13,6 +14,36 @@ async function exists(path) {
   } catch {
     return false;
   }
+}
+
+async function newestSourceMtime(directory) {
+  let newest = 0;
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch {
+    return newest;
+  }
+  for (const entry of entries) {
+    const full = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, await newestSourceMtime(full));
+    } else if (entry.isFile()) {
+      const info = await stat(full);
+      newest = Math.max(newest, info.mtimeMs);
+    }
+  }
+  return newest;
+}
+
+async function runtimeExists() {
+  return exists(runtime);
+}
+
+async function runtimeIsFresh() {
+  if (!(await runtimeExists())) return false;
+  const info = await stat(runtime);
+  return info.mtimeMs >= (await newestSourceMtime(source));
 }
 
 function commandWorks(command, args) {
@@ -44,9 +75,11 @@ function run(command, args) {
   });
 }
 
-if (await exists(runtime)) process.exit(0);
+const hasRuntime = await runtimeExists();
+if (hasRuntime && (await runtimeIsFresh())) process.exit(0);
 
 if (
+  !hasRuntime &&
   process.env.REA_UI_LOCAL !== "1" &&
   (await commandWorks("rea", ["--version"]))
 ) {
@@ -54,8 +87,16 @@ if (
 }
 
 console.log("");
-console.log("REA-Laufzeit fehlt; baue sie einmalig für die Oberfläche …");
-console.log("Das kann beim ersten Start einige Minuten dauern.");
+console.log(
+  hasRuntime
+    ? "REA-Laufzeit ist veraltet; baue sie für die Oberfläche neu …"
+    : "REA-Laufzeit fehlt; baue sie einmalig für die Oberfläche …",
+);
+console.log(
+  hasRuntime
+    ? "Das dauert nur wenige Sekunden."
+    : "Das kann beim ersten Start einige Minuten dauern.",
+);
 console.log("");
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";

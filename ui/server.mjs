@@ -15,6 +15,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const UI_DIR = HERE;
 const REA_SCRIPT = join(ROOT, "scripts", "rea.mjs");
+const REA_RUNTIME = join(ROOT, "dist", "cli-runtime", "cli.js");
 const requestedPort = Number(process.env.REA_UI_PORT || 8787);
 const PORT =
   Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort < 65_536
@@ -183,6 +184,10 @@ async function getLauncher() {
   const configured = process.env.REA_BIN;
   if (configured) {
     launcher = { command: configured, prefix: [] };
+    return launcher;
+  }
+  if (existsSync(REA_RUNTIME)) {
+    launcher = { command: process.execPath, prefix: [REA_SCRIPT] };
     return launcher;
   }
   try {
