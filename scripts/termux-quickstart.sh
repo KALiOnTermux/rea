@@ -152,11 +152,61 @@ export PATH="$TOOLCHAIN/node_modules/.bin:$PATH"
 [ "$(npm --version)" = "$PINNED_NPM_VERSION" ] ||
   fail "pinned npm installation did not produce npm $PINNED_NPM_VERSION"
 
+# npm can omit optional native packages on Android. The runtime bundler imports
+# rolldown, so install its exact Android binding when npm ci left it behind.
+ensure_rolldown_android_binding() {
+  [ "$(node -p 'process.platform')" = "android" ] || return 0
+
+  local arch binding_package binding_file binding_dir rolldown_version termux_npm
+  arch="$(node -p 'process.arch')"
+  case "$arch" in
+    arm64)
+      binding_package="@rolldown/binding-android-arm64"
+      binding_file="rolldown-binding.android-arm64.node"
+      ;;
+    arm)
+      binding_package="@rolldown/binding-android-arm-eabi"
+      binding_file="rolldown-binding.android-arm-eabi.node"
+      ;;
+    *)
+      fail "unsupported Android architecture for rolldown: $arch"
+      ;;
+  esac
+
+  binding_dir="node_modules/@rolldown/${binding_package##*/}"
+  [ -f "$binding_dir/$binding_file" ] && return 0
+
+  rolldown_version="$(node -p 'require("./node_modules/rolldown/package.json").version')" ||
+    fail "could not read the installed rolldown version"
+
+  # Use Termux's npm for this repair; the pinned npm can skip the optional
+  # package during npm ci, which is the omission being repaired here.
+  termux_npm="${PREFIX%/}/bin/npm"
+  [ -x "$termux_npm" ] || fail "Termux npm is missing: $termux_npm"
+
+  # Remove a partial install so npm reifies the package instead of assuming
+  # the missing binary is already present.
+  rm -rf -- "$binding_dir"
+  printf 'Installing %s@%s (missing Android binding)...\n' \
+    "$binding_package" "$rolldown_version"
+  "$termux_npm" install \
+    --no-save \
+    --package-lock=false \
+    --ignore-scripts \
+    --include=optional \
+    "${binding_package}@${rolldown_version}" ||
+    fail "could not install $binding_package@$rolldown_version"
+
+  [ -f "$binding_dir/$binding_file" ] ||
+    fail "npm completed without installing $binding_dir/$binding_file"
+}
+
 if [ "${REA_TERMUX_SKIP_INSTALL:-0}" != "1" ]; then
   HUSKY=0 npm ci
 fi
 
 if [ "${REA_TERMUX_SKIP_BUILD:-0}" != "1" ]; then
+  ensure_rolldown_android_binding
   npm run build:termux
 fi
 
