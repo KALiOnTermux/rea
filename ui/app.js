@@ -10,6 +10,7 @@ const state = {
   apkPath: "",
   busy: false,
   lastResult: null,
+  preflight: null,
   toastTimer: null,
 };
 
@@ -120,7 +121,7 @@ function renderStatus(data) {
       ? `<span class="pill good">Termux erkannt</span>`
       : `<span class="pill">Desktop</span>`,
     optionalMissing
-      ? `<span class="pill warn">${optionalMissing} optionale Werkzeuge fehlen</span>`
+      ? `<span class="pill warn">Optionale Werkzeuge fehlen</span>`
       : `<span class="pill good">Alle Standardwerkzeuge da</span>`,
   ].join("");
 
@@ -150,6 +151,7 @@ async function refreshStatus() {
   setConnection("checking", "Prüfe …");
   try {
     const data = await api("/api/status?refresh=1");
+    state.preflight = null;
     renderStatus(data);
     setConnection("online", "Lokal verbunden");
   } catch (error) {
@@ -408,6 +410,65 @@ async function withEvidence(args, label) {
   }
 }
 
+async function ensurePreflight(force = false) {
+  if (!force && state.preflight) return state.preflight;
+  try {
+    state.preflight = await api(`/api/preflight${force ? "?refresh=1" : ""}`);
+  } catch (error) {
+    state.preflight = {
+      error: error.message,
+      jadx: { ok: false, detail: "", remediation: "" },
+      apktool: { ok: false, detail: "", remediation: "" },
+    };
+  }
+  return state.preflight;
+}
+
+function showBlocked(label, title, message, check) {
+  state.lastResult = null;
+  $("#resultCard").classList.remove("hidden");
+  $("#resultLabel").textContent = label;
+  $("#resultTitle").textContent = title;
+  $("#resultMeta").innerHTML =
+    `<span class="meta-pill warn">Nicht gestartet</span>`;
+  $("#resultHelp").textContent =
+    "Die Aktion wurde bewusst nicht ausgeführt, weil eine Voraussetzung fehlt. So bekommst du keine rohe Fehlermeldung.";
+  $("#commandBox").classList.add("hidden");
+
+  const details = [message];
+  if (check?.detail) details.push(`Technische Meldung:\n${check.detail}`);
+  if (check?.remediation) details.push(`Einrichtung:\n${check.remediation}`);
+  details.push("Die Aktion wurde nicht gestartet.");
+  $("#resultOutput").textContent = details.join("\n\n");
+  $("#resultError").classList.add("hidden");
+  $("#resultError").textContent = "";
+  $("#resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function requireJadx(label) {
+  const preflight = await ensurePreflight();
+  if (preflight.jadx?.ok) return true;
+  showBlocked(
+    label,
+    "JADX/JDK fehlt",
+    "Für Manifest, Klassen und Methoden braucht REA JADX und ein JDK. Die Aktion wurde nicht gestartet, damit du keine rohe Fehlermeldung bekommst.",
+    preflight.jadx,
+  );
+  return false;
+}
+
+async function requireApktool(label) {
+  const preflight = await ensurePreflight();
+  if (preflight.apktool?.ok) return true;
+  showBlocked(
+    label,
+    "apktool fehlt",
+    "Für Ressourcen und Strings braucht REA apktool. Die Aktion wurde nicht gestartet, damit du keine rohe Fehlermeldung bekommst.",
+    preflight.apktool,
+  );
+  return false;
+}
+
 function requireApk() {
   if (!state.apkPath) {
     toast("Bitte zuerst eine APK auswählen oder einen Pfad übernehmen.", true);
@@ -507,12 +568,19 @@ async function apkAction(action) {
       );
       return;
     case "manifest":
+      if (!(await requireJadx("Manifest und Komponenten"))) return;
       await withEvidence(
         ["inspect-android-package", path, "--format", "md"],
         "Manifest und Komponenten",
       );
       return;
     case "classes":
+      if (
+        !(await requireJadx(
+          classQuery ? `Klassen: ${classQuery}` : "Alle Klassen",
+        ))
+      )
+        return;
       await run(
         [
           "search-android-classes",
@@ -532,6 +600,7 @@ async function apkAction(action) {
         $("#methodClass").focus();
         return;
       }
+      if (!(await requireJadx(`Methode: ${methodClass}.${methodName}`))) return;
       {
         const args = [
           "inspect-android-method",
@@ -548,6 +617,7 @@ async function apkAction(action) {
       }
       return;
     case "resources":
+      if (!(await requireApktool("Ressourcen und Strings"))) return;
       await run(
         [
           "decode-android-resources",
@@ -564,6 +634,7 @@ async function apkAction(action) {
       );
       return;
     case "doctor":
+      state.preflight = null;
       await run(
         ["doctor", "--target", path, "--format", "md"],
         "APK-Werkzeuge prüfen",

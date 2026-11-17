@@ -15,7 +15,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const UI_DIR = HERE;
 const REA_SCRIPT = join(ROOT, "scripts", "rea.mjs");
-const PORT = Number(process.env.REA_UI_PORT || 8787);
+const requestedPort = Number(process.env.REA_UI_PORT || 8787);
+const PORT =
+  Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort < 65_536
+    ? requestedPort
+    : 8787;
 const HOST = process.env.REA_UI_HOST || "127.0.0.1";
 const MAX_UPLOAD = 512 * 1024 * 1024;
 const MAX_OUTPUT = 4 * 1024 * 1024;
@@ -25,6 +29,7 @@ const TERMUX = Boolean(
   process.env.TERMUX_VERSION || process.env.PREFIX?.includes("com.termux"),
 );
 const ACCESS_TOKEN = process.env.REA_UI_TOKEN || "";
+const LOCAL_MODE = process.env.REA_UI_LOCAL === "1";
 const NO_OPEN = process.argv.includes("--no-open");
 
 const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]/g;
@@ -171,6 +176,10 @@ function runProcess(command, args, options = {}) {
 let launcher = null;
 async function getLauncher() {
   if (launcher) return launcher;
+  if (LOCAL_MODE) {
+    launcher = { command: process.execPath, prefix: [REA_SCRIPT] };
+    return launcher;
+  }
   const configured = process.env.REA_BIN;
   if (configured) {
     launcher = { command: configured, prefix: [] };
@@ -206,7 +215,7 @@ function parseCommands(helpText) {
     const match = /^  ([a-z0-9][a-z0-9-]*)\s{2,}(.+)$/.exec(line);
     if (!match) continue;
     const name = match[1];
-    if (name === "completions" || name === "mcp") continue;
+    if (name === "mcp") continue;
     if (seen.has(name)) continue;
     seen.add(name);
     commands.push({ name, description: match[2].trim() });
@@ -282,6 +291,64 @@ async function getStatus(force = false) {
   };
   statusCacheAt = now;
   return statusCache;
+}
+
+async function getPreflight(force = false) {
+  const status = await getStatus(force);
+  const jadx = status.checks.find((check) => check.name === "jadx");
+  let apktool = {
+    ok: false,
+    detail: "apktool wurde noch nicht geprüft.",
+    remediation: "",
+  };
+
+  try {
+    const result = await runRea(
+      ["inspect-apktool-client", "--format", "json"],
+      {
+        timeoutMs: 30_000,
+        maxBytes: 512 * 1024,
+      },
+    );
+    const parsed = result.stdout.trim() ? JSON.parse(result.stdout) : null;
+    if (parsed && !parsed.code) {
+      const normalized =
+        parsed.normalized_result ?? parsed.summary?.normalized_result ?? parsed;
+      const version = normalized?.client?.apktool_version;
+      apktool = version
+        ? { ok: true, detail: `apktool ${version}`, remediation: "" }
+        : {
+            ok: false,
+            detail: "apktool antwortet, nennt aber keine Version.",
+            remediation:
+              "Prüfe den apktool-Launcher mit `rea inspect-apktool-client`.",
+          };
+    } else {
+      apktool = {
+        ok: false,
+        detail: parsed?.message || result.stderr || "apktool ist nicht bereit.",
+        remediation: parsed?.remediation?.action || "",
+      };
+    }
+  } catch (error) {
+    apktool = {
+      ok: false,
+      detail:
+        error instanceof Error
+          ? error.message
+          : "apktool konnte nicht geprüft werden.",
+      remediation: "",
+    };
+  }
+
+  return {
+    jadx: {
+      ok: Boolean(jadx?.ok),
+      detail: jadx?.detail || "JADX ist nicht eingerichtet.",
+      remediation: jadx?.remediation || "",
+    },
+    apktool,
+  };
 }
 
 async function readJsonBody(req, limit = 1_000_000) {
@@ -536,6 +603,15 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/preflight") {
+      json(
+        res,
+        200,
+        await getPreflight(url.searchParams.get("refresh") === "1"),
+      );
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/commands") {
       json(res, 200, { commands: await getCommands() });
       return;
@@ -610,6 +686,19 @@ const server = createServer(async (req, res) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+});
+
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} ist bereits belegt. Starte mit einem anderen Port, z. B. REA_UI_PORT=8788 npm run ui.`,
+    );
+    process.exit(1);
+  }
+  console.error(
+    `Der UI-Server konnte nicht starten: ${error?.message || error}`,
+  );
+  process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {
