@@ -14,6 +14,11 @@ export const documentationSections = [
         route: "/client-configuration",
       },
       {
+        text: "Run the MCP service from Termux:Boot",
+        source: "getting-started/termux.md",
+        route: "/termux",
+      },
+      {
         text: "CLI and Evidence",
         source: "getting-started/cli.md",
         route: "/cli",

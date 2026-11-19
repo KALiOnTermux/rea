@@ -70,6 +70,7 @@ printf 'Installed the REA MCP Termux:Boot script.\n'
 printf '  Script: %s\n' "$BOOT_SCRIPT"
 printf '  Starts: termux-services, then the enabled %s unit\n' "$SERVICE"
 printf '  Logs:   %s/var/log/sv/%s/current\n' "$PREFIX" "$SERVICE"
+printf '  Boot:   %s/var/log/rea-mcp-boot.log\n' "$PREFIX"
 printf '\nInstall Termux:Boot, open it once, and disable battery optimization for\n'
 printf 'Termux and Termux:Boot. Android must be unlocked once after a reboot\n'
 printf 'before the Termux environment can start.\n'

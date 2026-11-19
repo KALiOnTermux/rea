@@ -8,6 +8,7 @@ product pages. The VitePress documentation source is this `docs/` tree.
 
 - [Installation and setup](getting-started/installation.md)
 - [Client configuration and troubleshooting](getting-started/client-configuration.md)
+- [Run the MCP service from Termux:Boot](getting-started/termux.md)
 - [CLI and Evidence](getting-started/cli.md)
 - [Guided MCP prompts and completion](getting-started/mcp-prompts.md)
 
