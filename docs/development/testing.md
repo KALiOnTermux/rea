@@ -48,6 +48,13 @@ that invoke PowerShell themselves remain subject to their own policy checks.
 | `npm run docs:check`              | Generated-document validation and fresh onboarding example consistency checks                                           |
 | `npm run docs:build`              | Render VitePress documentation and apply its page-link checks; no live external-link or GitHub fragment verification    |
 
+Turbo stores those results under `.turbo/cache`. Keep the explicit relative
+`cacheDir` in `turbo.json` that pins it to the current checkout: with no
+`cacheDir`, Turbo shares the cache with the main worktree of a linked Git
+worktree and resolves the path against that parent checkout. The shared path is
+then unwritable for a nested worktree, and `check:fast` fails in the pre-push
+hook on a permission error before any check runs.
+
 `typecheck` also checks the JavaScript verification scripts listed in
 `tsconfig.scripts.json` (`checkJs`, with the main compiler options). Those
 scripts import built modules through the package-private `#dist/*` alias, which
