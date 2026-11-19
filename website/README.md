@@ -82,8 +82,12 @@ CI installs both packages explicitly before rendering the card.
 Without root access, unpack the Debian packages into a user prefix instead of
 installing them. CairoSVG only needs the shared libraries and a fontconfig
 configuration that points at the unpacked fonts, so the card renders the same.
-A missing library surfaces as `Cannot prepare sharing image: no library called
-"cairo-2" was found`, and `check` fails rather than shipping a stale card.
+A missing library stops the run on the first line of the CairoSVG error,
+`Cannot prepare sharing image: no library called "cairo-2" was found`. The
+remaining lines list the other names it tried (`cairo`, `libcairo.so.2`,
+`libcairo.2.dylib`, `libcairo-2.dll`) and end with `Install
+website/requirements.txt and native Cairo; see website/README.md.`, so `check`
+exits 1 instead of shipping a stale card.
 
 ```sh
 root="$HOME/.local/website-libs"
