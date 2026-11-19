@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "cacheDir": ".turbo/cache",
   "cacheMaxAge": "7d",
   "cacheMaxSize": "500MB",
   "globalDependencies": [".nvmrc", ".npmrc"],
