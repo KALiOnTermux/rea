@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { writeFileSync } from "node:fs";
+import { statSync, utimesSync, writeFileSync } from "node:fs";
 import { buffer } from "node:stream/consumers";
 import { createReader } from "./inventory/reader.js";
 import {
@@ -1145,7 +1145,13 @@ it.each(["valid replacement", "malformed blob"] as const)(
     await expect(
       scanCanonicalArtifactInventory(path, {}, (...args) => {
         expect(args[1]).toBe("node-sea");
+        const before = statSync(args[0]);
         writeFileSync(args[0], replacement);
+        // Identity checks compare nanosecond timestamps, and a coarse
+        // filesystem clock can leave them unchanged across a same-size
+        // rewrite. Advance the modification time so the replacement is
+        // observable in every case this test distinguishes.
+        utimesSync(args[0], before.atime, new Date(before.mtimeMs + 1_000));
         const reader = createReader(...args);
         if (reader instanceof NodeSeaArtifactReader) created = reader;
         return reader;

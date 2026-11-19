@@ -3,7 +3,14 @@ import { awaitAcknowledgement } from "../../../tests/fixtures/lifecycleAcknowled
 import { dirname, join } from "node:path";
 import { createTestTempDirectory } from "../../../tests/fixtures/temporaryDirectory.js";
 import { createHash, randomBytes } from "node:crypto";
-import { rename, unlink, writeFile, type FileHandle } from "node:fs/promises";
+import {
+  rename,
+  stat,
+  unlink,
+  utimes,
+  writeFile,
+  type FileHandle,
+} from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { deflateSync } from "node:zlib";
 import { setImmediate } from "node:timers/promises";
@@ -276,7 +283,12 @@ it("binds materialization to the inventoried digest and checks cached carrier fr
     );
     await reader.prepareContainer(hash(bytes));
     await reader.prepareContainer(hash(bytes));
+    const before = await stat(path);
     await writeFile(path, archive(Buffer.from("other")));
+    // Identity checks compare nanosecond timestamps, and a coarse filesystem
+    // clock can leave them unchanged across a same-size rewrite. Advance the
+    // modification time so the cached binding sees a carrier that moved.
+    await utimes(path, before.atime, new Date(before.mtimeMs + 1_000));
     await expect(reader.prepareContainer(hash(bytes))).rejects.toMatchObject({
       reason: "integrity",
     });

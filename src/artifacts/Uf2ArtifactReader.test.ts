@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { expect, it } from "vitest";
@@ -156,7 +156,12 @@ it("rejects a forged region entry and a changed carrier", async () => {
     await expect(
       reader.open({ ...entry, adapterKey: "uf2:1" }),
     ).rejects.toMatchObject({ reason: "integrity" });
+    const before = await stat(path);
     await writeFile(path, uf2File(uf2Image(RP2040_FAMILY, 0, APP)));
+    // Identity checks compare nanosecond timestamps, and a coarse filesystem
+    // clock can leave them unchanged across a same-size rewrite. Advance the
+    // modification time so the changed carrier is observable.
+    await utimes(path, before.atime, new Date(before.mtimeMs + 1_000));
     await expect(reader.open(entry)).rejects.toMatchObject({
       reason: "integrity",
     });
