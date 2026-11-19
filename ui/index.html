@@ -32,10 +32,22 @@
     <nav class="tabs" id="tabs" aria-label="Bereiche">
       <button class="tab active" data-tab="start">Start</button>
       <button class="tab" data-tab="web">Web-App</button>
+      <button class="tab" data-tab="blueprint">Blaupause</button>
       <button class="tab" data-tab="apk">APK prüfen</button>
       <button class="tab" data-tab="code">Apps &amp; Dateien</button>
-      <button class="tab" data-tab="mcp">MCP-Server</button>
-      <button class="tab" data-tab="commands">Alle Befehle</button>
+      <button
+        class="tab nav-more-toggle"
+        type="button"
+        id="navMoreToggle"
+        aria-expanded="false"
+        aria-controls="navMoreMenu"
+      >
+        Mehr <span aria-hidden="true">▾</span>
+      </button>
+      <div class="nav-more-menu hidden" id="navMoreMenu">
+        <button class="tab" data-tab="mcp">MCP-Server</button>
+        <button class="tab" data-tab="commands">Alle Befehle</button>
+      </div>
       <button class="tab" data-tab="help">Hilfe</button>
     </nav>
 
@@ -45,9 +57,9 @@
           <p class="eyebrow">Einfach anfangen</p>
           <h2>Was möchtest du untersuchen?</h2>
           <p class="lead">
-            Wähle einen Einstieg. Du musst keine REA-Befehle kennen. Alles läuft
-            lokal auf diesem Handy – die Datei wird nicht ins Internet
-            hochgeladen.
+            Wähle einen Einstieg. Du brauchst keine Programmierkenntnisse und
+            keine REA-Befehle. Alles läuft lokal auf diesem Handy – Dateien
+            werden nicht ins Internet hochgeladen.
           </p>
           <div class="quick-grid">
             <button class="quick-card" data-go="web">
@@ -119,17 +131,24 @@
             <p class="eyebrow">Website &amp; Web-App</p>
             <h2>URL aufnehmen und verstehen</h2>
             <p class="lead">
-              REA startet einen eigenen, temporären Chromium-Browser, lädt die
-              URL und nimmt DOM, Netzwerk, Konsole, Events und Skripte auf.
-              Danach werden die JavaScript-Dateien statisch analysiert. Das ist
-              eine belastbare Bestandsaufnahme – kein Versprechen, eine fremde
-              App vollständig 1:1 zu kopieren.
+              URL einfügen, „Aufnehmen &amp; verstehen“ antippen – fertig. REA
+              öffnet die Seite lokal und sammelt Netzwerk, Events, DOM und
+              Skripte. Alles Weitere ist optional und eingeklappt, damit die
+              Ansicht übersichtlich bleibt.
             </p>
           </div>
         </div>
 
         <article class="card">
-          <h3>1. Seite auswählen</h3>
+          <div class="card-head">
+            <div>
+              <h3>1. Seite auswählen</h3>
+              <p class="hint">
+                In der Regel reicht die Adresse. Alles andere ist optional.
+              </p>
+            </div>
+            <span class="simple-badge">Einfach loslegen</span>
+          </div>
           <label class="field">
             <span>Website oder Web-App (URL)</span>
             <input
@@ -140,84 +159,153 @@
               spellcheck="false"
             />
             <small
-              >Nur öffentlich erreichbare http(s)-Seiten. Login, Captcha und
-              Seiten, für die du keine Erlaubnis hast, gehören nicht
-              dazu.</small
+              >Vollständige Adresse mit <code>https://</code>. Analysiere nur
+              Seiten, für die du die Erlaubnis hast.</small
             >
           </label>
           <label class="field">
-            <span>Browser-Programm (optional)</span>
-            <input
-              id="webBrowser"
-              type="text"
-              placeholder="Leer lassen: REA sucht Chromium/Chrome"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <small
-              >Absoluter Pfad zu Chromium oder Chrome. Leer lassen für die
-              automatische Suche in Termux, PATH und im Playwright-Cache.</small
+            <span>Was möchtest du tun?</span>
+            <select id="webPreset">
+              <option value="quick">
+                Seite ansehen und Daten sammeln (empfohlen)
+              </option>
+              <option value="slow">
+                Seite mit viel Nachladen aufnehmen
+              </option>
+              <option value="clicks">Einen Ablauf mit Klicks testen</option>
+            </select>
+            <small id="webPresetHelp"
+              >REA lädt die Seite, wartet kurz und sammelt Requests, Events,
+              DOM und Skripte. Für die meisten Seiten ist das richtig.</small
             >
           </label>
-          <div class="grid two">
-            <label class="field">
-              <span>Wartezeit nach dem Laden (ms)</span>
-              <input
-                id="webWait"
-                type="number"
-                min="500"
-                max="30000"
-                step="500"
-                value="3000"
-              />
-              <small
-                >Mehr Zeit für Nachladen, Animationen und Hintergrundanfragen.
-                Standard: 3000 ms.</small
-              >
-            </label>
-            <label class="field">
-              <span>Klick-Schritte (optional)</span>
-              <textarea
-                id="webClicks"
-                rows="4"
-                spellcheck="false"
-                placeholder="#login
+
+          <details class="advanced-options" id="webAdvanced">
+            <summary>Mehr Optionen (nur bei Bedarf)</summary>
+            <div class="advanced-body">
+              <p class="hint advanced-intro">
+                Öffne diesen Bereich nur, wenn die Seite mehr Zeit braucht,
+                einen bestimmten Ablauf hat oder du die Aufnahme genauer
+                einstellen möchtest. Die Standardwerte funktionieren meistens.
+              </p>
+              <label class="field">
+                <span>Browser-Programm (optional)</span>
+                <input
+                  id="webBrowser"
+                  type="text"
+                  placeholder="Leer lassen: REA sucht Chromium/Chrome"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <small
+                  >Nur nötig, wenn REA den Browser nicht selbst findet. Dann den
+                  absoluten Pfad zu Chromium oder Chrome eintragen.</small
+                >
+              </label>
+              <div class="grid two">
+                <label class="field">
+                  <span>Wartezeit nach dem Laden (ms)</span>
+                  <input
+                    id="webWait"
+                    type="number"
+                    min="500"
+                    max="30000"
+                    step="500"
+                    value="3000"
+                  />
+                  <small
+                    >Mehr Zeit für Nachladen, Animationen und
+                    Hintergrundanfragen. Standard: 3000 ms.</small
+                  >
+                </label>
+                <label class="field">
+                  <span>Klick-Schritte (optional)</span>
+                  <textarea
+                    id="webClicks"
+                    rows="4"
+                    spellcheck="false"
+                    placeholder="#login
 button.buy
 [data-testid='search']"
-              ></textarea>
-              <small
-                >Eine CSS-Auswahl pro Zeile. REA klickt der Reihe nach und nimmt
-                die Reaktionen auf. Maximal 20 Schritte.</small
-              >
-            </label>
-          </div>
-          <div class="check-row">
-            <label>
-              <input id="webBodies" type="checkbox" checked />
-              <span>Request-/Response-Bodies aufnehmen</span>
-            </label>
-            <label>
-              <input id="webHeaders" type="checkbox" checked />
-              <span
-                >Header-Werte aufnehmen (Zugangsdaten werden redigiert)</span
-              >
-            </label>
-            <label>
-              <input id="webServiceWorkers" type="checkbox" checked />
-              <span>Service Worker zulassen</span>
-            </label>
-          </div>
+                  ></textarea>
+                  <small
+                    >Eine CSS-Auswahl pro Zeile. REA klickt der Reihe nach und
+                    nimmt die Reaktionen auf. Maximal 20 Schritte.</small
+                  >
+                </label>
+              </div>
+              <div class="check-row">
+                <label>
+                  <input id="webBodies" type="checkbox" checked />
+                  <span>Request-/Response-Bodies aufnehmen</span>
+                </label>
+                <label>
+                  <input id="webHeaders" type="checkbox" checked />
+                  <span
+                    >Header-Werte aufnehmen (Zugangsdaten werden
+                    redigiert)</span
+                  >
+                </label>
+                <label>
+                  <input id="webServiceWorkers" type="checkbox" checked />
+                  <span>Service Worker zulassen</span>
+                </label>
+              </div>
+              <details class="mini-help">
+                <summary>Was bedeuten diese Optionen?</summary>
+                <ul class="help-list">
+                  <li>
+                    <strong>Wartezeit:</strong> Wie lange REA nach dem Laden
+                    wartet, bevor die Aufnahme endet. Erhöhen, wenn Inhalte
+                    später nachgeladen werden.
+                  </li>
+                  <li>
+                    <strong>Klick-Schritte:</strong> Kleine Anweisungen, damit
+                    REA Schaltflächen antippt. Jede Zeile ist eine CSS-Auswahl,
+                    z. B. <code>#login</code> oder <code>button.buy</code>.
+                  </li>
+                  <li>
+                    <strong>Bodies und Header:</strong> Zusätzliche Details zu
+                    Anfragen und Antworten. Kann vertrauliche Inhalte enthalten;
+                    die Aufnahme bleibt lokal.
+                  </li>
+                  <li>
+                    <strong>Service Worker:</strong> Hintergrundprogramme der
+                    Seite. Meist eingeschaltet lassen.
+                  </li>
+                </ul>
+              </details>
+              <details class="mini-help">
+                <summary>Login, Passwort oder Captcha?</summary>
+                <p class="hint">
+                  REA meldet sich nicht automatisch an und löst keine Captchas.
+                  Passwörter und Zugangsdaten werden bewusst nicht abgefragt
+                  oder gespeichert. Für geschützte Bereiche ist die Aufnahme
+                  deshalb nicht geeignet – nutze öffentliche Seiten oder eine
+                  Testumgebung ohne echte Zugangsdaten.
+                </p>
+              </details>
+            </div>
+          </details>
+
           <div class="button-row">
-            <button class="btn primary" id="runWeb">Web-App analysieren</button>
-            <button class="btn" id="checkWeb">Browser prüfen</button>
+            <button class="btn primary" id="runWeb">
+              Aufnehmen &amp; verstehen
+            </button>
+            <button class="btn ghost" id="checkWeb">Browser prüfen</button>
           </div>
+          <p class="hint">
+            So geht's: URL einfügen → „Aufnehmen &amp; verstehen“ antippen →
+            Ergebnis lesen. Nach dem Lauf kannst du den Bericht speichern oder
+            unter „Weitere Exporte“ Events und Pfade als Text oder CSV
+            herunterladen.
+          </p>
           <div id="webStatus" class="status-box">
             <p class="muted">Browser wird beim ersten Start geprüft …</p>
           </div>
           <p class="hint">
             Die Aufnahme kann vertrauliche Inhalte enthalten und bleibt lokal
             unter <code>~/rea-artifacts/</code> und <code>~/rea-ui/web/</code>.
-            Analysiere nur Seiten, für die du die Erlaubnis hast.
           </p>
         </article>
 
@@ -250,35 +338,217 @@ button.buy
         </article>
       </section>
 
+      <section class="panel" data-panel="blueprint">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Vom Reverse Engineering zum Bauplan</p>
+            <h2>Blaupause erstellen</h2>
+            <p class="lead">
+              REA Studio bündelt eine abgeschlossene Analyse zu einem
+              herunterladbaren Bauplan: äußere Oberfläche, beobachtetes
+              Verhalten, Innenleben mit Funktionen und Aufrufen, Beweise und
+              ein fertiger Auftrag für einen Coding-Agenten – von Anfang bis
+              Ende.
+            </p>
+          </div>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h3>1. Quelle wählen</h3>
+              <p class="hint">
+                Nimm die Analyse, die du gerade gemacht hast. Die Blaupause
+                baut darauf auf, ohne dass du etwas neu einrichten musst.
+              </p>
+            </div>
+            <span class="simple-badge">Schritt 1</span>
+          </div>
+          <div class="quick-grid blueprint-sources">
+            <button
+              class="quick-card blueprint-source"
+              type="button"
+              data-blueprint-source="web"
+            >
+              <span class="quick-icon">WEB</span>
+              <strong>Website / Web-App</strong>
+              <span id="blueprintWebStatus">Noch keine Web-Analyse.</span>
+            </button>
+            <button
+              class="quick-card blueprint-source"
+              type="button"
+              data-blueprint-source="apk"
+            >
+              <span class="quick-icon">APK</span>
+              <strong>Android-App</strong>
+              <span id="blueprintApkStatus">Noch keine APK ausgewählt.</span>
+            </button>
+            <button
+              class="quick-card blueprint-source"
+              type="button"
+              data-blueprint-source="code"
+            >
+              <span class="quick-icon">APP</span>
+              <strong>Programm / Datei</strong>
+              <span id="blueprintCodeStatus">Noch kein Programm ausgewählt.</span>
+            </button>
+          </div>
+          <label class="field">
+            <span>Ausgewähltes Ziel</span>
+            <input
+              id="blueprintTarget"
+              type="text"
+              readonly
+              placeholder="Noch keine Analyse gewählt"
+            />
+            <small id="blueprintTargetHelp"
+              >Wähle oben eine Quelle. Danach zeigt REA hier das Ziel und
+              schaltet die Erstellung frei.</small
+            >
+          </label>
+          <label class="field hidden" id="blueprintSourceField">
+            <span>Lokaler Quellordner (optional)</span>
+            <input
+              id="blueprintLocalSource"
+              type="text"
+              placeholder="z. B. /pfad/zum/projekt"
+            />
+            <small
+              >Bei einem lokalen Web-Projekt ergänzt REA Serverrouten,
+              Handler, Signaturen, Aufrufe, Fehlerpfade und Event-Bindings aus
+              dem Quellcode.</small
+            >
+          </label>
+          <div class="check-row">
+            <label>
+              <input id="blueprintSources" type="checkbox" checked />
+              <span>Quellcode und Ressourcen einschließen</span>
+            </label>
+            <label>
+              <input id="blueprintFull" type="checkbox" />
+              <span>Vollständige Quellen (dauert länger)</span>
+            </label>
+          </div>
+          <p class="hint action-state-hint" id="blueprintHint">
+            Die Blaupause wird aus der vorhandenen Analyse gebaut. Fehlt sie,
+            führt „Zur Analyse“ direkt zum passenden Bereich.
+          </p>
+          <div class="button-row">
+            <button class="btn primary" id="buildBlueprint" disabled>
+              Blaupause erstellen
+            </button>
+            <button class="btn" id="gotoBlueprintSource">Zur Analyse</button>
+          </div>
+          <div class="web-progress hidden" id="blueprintProgress" aria-live="polite">
+            <div class="web-progress-head">
+              <strong id="blueprintProgressLabel">Bereit</strong>
+              <span id="blueprintProgressPercent">0 %</span>
+            </div>
+            <div class="web-progress-track">
+              <div class="web-progress-bar" id="blueprintProgressBar"></div>
+            </div>
+            <p class="hint" id="blueprintProgressDetail"></p>
+          </div>
+        </article>
+
+        <article class="card hidden" id="blueprintResult">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Fertig</p>
+              <h3 id="blueprintTitle">Blaupause</h3>
+            </div>
+            <span class="simple-badge" id="blueprintSize">–</span>
+          </div>
+          <div class="overview-grid">
+            <div class="overview-card">
+              <span>Oberfläche</span>
+              <strong id="blueprintSurfaceCount">–</strong>
+              <small>Merkmale erfasst</small>
+            </div>
+            <div class="overview-card">
+              <span>Verhalten</span>
+              <strong id="blueprintBehaviorCount">–</strong>
+              <small>Merkmale erfasst</small>
+            </div>
+            <div class="overview-card">
+              <span>Innenleben</span>
+              <strong id="blueprintInternalsCount">–</strong>
+              <small>Merkmale erfasst</small>
+            </div>
+            <div class="overview-card">
+              <span>Offene Punkte</span>
+              <strong id="blueprintOpenCount">–</strong>
+              <small>im Bauplan markiert</small>
+            </div>
+          </div>
+          <p class="hint" id="blueprintSummary"></p>
+          <div class="completeness" id="blueprintCompleteness">
+            <div class="completeness-head">
+              <div>
+                <span class="eyebrow">Vollständigkeitsprüfung</span>
+                <strong id="blueprintCompletenessLabel">–</strong>
+              </div>
+              <span class="simple-badge" id="blueprintCompletenessScore"
+                >–</span
+              >
+            </div>
+            <ul class="completeness-checks" id="blueprintCompletenessChecks"></ul>
+            <div class="completeness-gaps" id="blueprintCompletenessGaps"></div>
+          </div>
+          <div class="button-row">
+            <a
+              class="btn primary"
+              id="blueprintDownload"
+              href="#"
+              download
+              >Blaupause herunterladen (.zip)</a
+            >
+            <button class="btn" id="copyBlueprintPrompt">
+              Agentenauftrag kopieren
+            </button>
+            <button class="btn" id="viewBlueprint">Bauplan ansehen</button>
+          </div>
+          <p class="hint">
+            Die ZIP-Datei enthält <code>BLUEPRINT.md</code>,
+            <code>AGENT-PROMPT.md</code>, <code>blueprint.json</code> sowie die
+            Beweise und Quellen. Öffne sie mit dem Coding-Agenten deiner Wahl.
+          </p>
+          <pre id="blueprintPreview" class="output hidden"></pre>
+        </article>
+      </section>
+
       <section class="panel" data-panel="apk">
         <div class="section-head">
           <div>
             <p class="eyebrow">Android</p>
             <h2>APK prüfen</h2>
             <p class="lead">
-              Die APK wird nur gelesen, niemals ausgeführt. Für Manifest und
-              Java-Code braucht REA zusätzlich JADX; für Ressourcen apktool.
+              Die APK wird nur gelesen, niemals ausgeführt. Manifest und
+              Java-Code liest JADX; Ressourcen und Strings apktool.
             </p>
           </div>
         </div>
 
         <article class="card">
           <h3>1. APK auswählen</h3>
-          <div class="file-row">
-            <label class="file-button" for="apkFile">APK auswählen</label>
+          <div class="file-row" id="apkDrop">
+            <button type="button" class="file-button" id="apkChoose">
+              APK auswählen
+            </button>
             <input
               id="apkFile"
               type="file"
               accept=".apk,.aab,.zip,application/vnd.android.package-archive"
             />
             <span class="hint"
-              >Bleibt lokal. Große Dateien können einige Sekunden
-              brauchen.</span
+              >Bleibt lokal. Du kannst die Datei auch hierher ziehen. Große
+              Dateien können einige Sekunden brauchen.</span
             >
           </div>
           <div id="uploadProgress" class="progress hidden">
             <div id="uploadBar"></div>
           </div>
+          <p id="uploadText" class="hint upload-text hidden"></p>
           <p class="or">oder Pfad eingeben</p>
           <div class="input-row">
             <input
@@ -294,6 +564,9 @@ button.buy
 
         <article class="card">
           <h3>2. Was möchtest du wissen?</h3>
+          <p class="hint action-state-hint" id="apkActionHint">
+            Wähle zuerst oben eine APK aus. Danach sind alle Aktionen bereit.
+          </p>
           <div class="action-grid">
             <div class="action">
               <div>
@@ -304,7 +577,7 @@ button.buy
                 </p>
                 <p class="needs ok">Keine Zusatzwerkzeuge nötig</p>
               </div>
-              <button class="btn primary" data-apk-action="overview">
+              <button class="btn primary" data-apk-action="overview" disabled>
                 Starten
               </button>
             </div>
@@ -317,7 +590,7 @@ button.buy
                 </p>
                 <p class="needs ok">Keine Zusatzwerkzeuge nötig</p>
               </div>
-              <button class="btn primary" data-apk-action="signature">
+              <button class="btn primary" data-apk-action="signature" disabled>
                 Starten
               </button>
             </div>
@@ -328,9 +601,11 @@ button.buy
                   Zeigt Paketname, Berechtigungen, Activities, Services und
                   weitere Deklarationen.
                 </p>
-                <p class="needs">Braucht JADX</p>
+                <p class="needs">Mit JADX</p>
               </div>
-              <button class="btn" data-apk-action="manifest">Starten</button>
+              <button class="btn" data-apk-action="manifest" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -339,9 +614,11 @@ button.buy
                   Findet Java/Kotlin-Klassen nach Namen. Leer lassen listet alle
                   Klassen.
                 </p>
-                <p class="needs">Braucht JADX</p>
+                <p class="needs">Mit JADX</p>
               </div>
-              <button class="btn" data-apk-action="classes">Starten</button>
+              <button class="btn" data-apk-action="classes" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -350,9 +627,11 @@ button.buy
                   Dekompiliert genau eine Methode. Klasse und Methodenname exakt
                   eingeben.
                 </p>
-                <p class="needs">Braucht JADX</p>
+                <p class="needs">Mit JADX</p>
               </div>
-              <button class="btn" data-apk-action="method">Starten</button>
+              <button class="btn" data-apk-action="method" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -361,9 +640,11 @@ button.buy
                   Liest Manifest, Ressourcen und Strings im Klartext. Nützlich
                   für App-Namen und Texte.
                 </p>
-                <p class="needs">Braucht apktool</p>
+                <p class="needs">Mit apktool</p>
               </div>
-              <button class="btn" data-apk-action="resources">Starten</button>
+              <button class="btn" data-apk-action="resources" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -374,7 +655,9 @@ button.buy
                 </p>
                 <p class="needs ok">Empfohlen bei Fehlern</p>
               </div>
-              <button class="btn" data-apk-action="doctor">Prüfen</button>
+              <button class="btn" data-apk-action="doctor" disabled>
+                Prüfen
+              </button>
             </div>
           </div>
         </article>
@@ -439,8 +722,8 @@ button.buy
             <h2>Apps, Ordner und Binärdateien</h2>
             <p class="lead">
               Für JavaScript/Electron ist keine zusätzliche Engine nötig. Native
-              Binärdateien brauchen Ghidra, Hopper, IDA oder Kuna – der Status
-              oben zeigt, was vorhanden ist.
+              Binärdateien analysiert Ghidra headless; Symbole, Abschnitte,
+              Strings und Einstiegspunkte erscheinen direkt in der Oberfläche.
             </p>
           </div>
         </div>
@@ -459,16 +742,22 @@ button.buy
               entpackte Electron-Apps.</small
             >
           </label>
+          <p class="hint action-state-hint" id="codeActionHint">
+            Trage zuerst einen Pfad ein. Danach prüft die Oberfläche, ob die
+            Datei oder der Ordner existiert, und schaltet die passenden
+            Aktionen frei.
+          </p>
           <div class="action-grid">
             <div class="action">
               <div>
                 <h4>Anwendung analysieren</h4>
                 <p>
                   Allgemeiner Überblick über eine App oder ein Verzeichnis
-                  inklusive Struktur und Einstiegspunkten.
+                  inklusive Struktur und Einstiegspunkten. Bei nativen
+                  Binärdateien liefert Ghidra Funktionen und Einstiegspunkte.
                 </p>
               </div>
-              <button class="btn primary" data-code-action="analyze">
+              <button class="btn primary" data-code-action="analyze" disabled>
                 Starten
               </button>
             </div>
@@ -476,11 +765,15 @@ button.buy
               <div>
                 <h4>JavaScript/Electron rekonstruieren</h4>
                 <p>
-                  Findet Module, Imports, IPC-Grenzen und Quellcode ohne
+                  Findet Module, Imports, IPC-Schnittstellen und Quellcode ohne
                   Ausführung der App.
                 </p>
               </div>
-              <button class="btn primary" data-code-action="javascript">
+              <button
+                class="btn primary"
+                data-code-action="javascript"
+                disabled
+              >
                 Starten
               </button>
             </div>
@@ -488,11 +781,13 @@ button.buy
               <div>
                 <h4>Technische Übersicht</h4>
                 <p>
-                  REA-Inspect für native Programme. Benötigt je nach Format
-                  einen Provider.
+                  REA-Inspect für native Programme: Symbole, Abschnitte,
+                  Imports, Strings und Einstiegspunkte.
                 </p>
               </div>
-              <button class="btn" data-code-action="inspect">Starten</button>
+              <button class="btn" data-code-action="inspect" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -502,7 +797,9 @@ button.buy
                   Schutzmechanismen.
                 </p>
               </div>
-              <button class="btn" data-code-action="hardening">Starten</button>
+              <button class="btn" data-code-action="hardening" disabled>
+                Starten
+              </button>
             </div>
             <div class="action">
               <div>
@@ -512,7 +809,9 @@ button.buy
                   Ordner. Zielordner muss noch nicht existieren.
                 </p>
               </div>
-              <button class="btn" data-code-action="extract">Entpacken</button>
+              <button class="btn" data-code-action="extract" disabled>
+                Entpacken
+              </button>
             </div>
           </div>
           <label class="field">
@@ -538,8 +837,8 @@ button.buy
             <h2>MCP-Server</h2>
             <p class="lead">
               Der MCP-Server macht REA für Agenten und MCP-Clients verfügbar.
-              Auf dem Handy läuft er über termux-services; die Oberfläche kann
-              ihn starten und stoppen.
+              Wenn termux-services vorhanden ist, kannst du den Dienst hier
+              starten und stoppen. Sonst zeigt die Oberfläche, was fehlt.
             </p>
           </div>
         </div>
@@ -553,11 +852,20 @@ button.buy
             <p class="muted">Prüfe …</p>
           </div>
           <div class="button-row">
-            <button class="btn primary" data-mcp-action="up">Starten</button>
-            <button class="btn" data-mcp-action="restart">Neu starten</button>
-            <button class="btn danger" data-mcp-action="down">Stoppen</button>
+            <button class="btn primary" data-mcp-action="up" disabled>
+              Starten
+            </button>
+            <button class="btn" data-mcp-action="restart" disabled>
+              Neu starten
+            </button>
+            <button class="btn danger" data-mcp-action="down" disabled>
+              Stoppen
+            </button>
             <button class="btn" id="loadMcpLog">Log anzeigen</button>
           </div>
+          <p class="hint action-state-hint" id="mcpActionHint">
+            Der Dienststatus wird beim Öffnen dieses Bereichs geprüft.
+          </p>
           <p class="hint">
             HTTP-Endpunkt: <code>http://127.0.0.1:8765/mcp</code>. Vom Laptop
             erreichbar mit <code>adb forward tcp:8765 tcp:8765</code>.
@@ -613,9 +921,16 @@ button.buy
             </small>
           </label>
           <div class="button-row">
-            <button class="btn primary" id="runCommand">Ausführen</button>
-            <button class="btn" id="commandHelp">Hilfe anzeigen</button>
+            <button class="btn primary" id="runCommand" disabled>
+              Ausführen
+            </button>
+            <button class="btn" id="commandHelp" disabled>
+              Hilfe anzeigen
+            </button>
           </div>
+          <p class="hint action-state-hint" id="commandActionHint">
+            Lade die Befehlsliste … Danach ist ein sicherer Befehl vorbelegt.
+          </p>
           <p class="hint">
             Manche Befehle starten Prozesse, schreiben Dateien oder brauchen
             zusätzliche Werkzeuge. Prüfe die Beschreibung, bevor du sie
@@ -685,8 +1000,12 @@ button.buy
                   <td>apktool</td>
                 </tr>
                 <tr>
-                  <td>Native Binärdateien</td>
-                  <td>Ghidra, Hopper, IDA oder Kuna</td>
+                  <td>Native Binärdateien: Härtung</td>
+                  <td>nichts Zusätzliches</td>
+                </tr>
+                <tr>
+                  <td>Native Binärdateien: Inspect/Analyse</td>
+                  <td>Ghidra (im Projekt eingerichtet)</td>
                 </tr>
                 <tr>
                   <td>JavaScript/Electron</td>
@@ -705,9 +1024,9 @@ button.buy
             <p>
               REA unterscheidet <strong>Beobachtungen</strong>,
               <strong>Ableitungen</strong> und <strong>Unbekanntes</strong>.
-              „Coverage“ sagt, wie vollständig geprüft wurde. „Limitations“
-              nennt Grenzen. Fehlende Angaben sind oft absichtlich als unbekannt
-              markiert und keine behauptete Abwesenheit.
+              „Coverage“ sagt, wie vollständig geprüft wurde. Fehlende Angaben
+              sind oft absichtlich als unbekannt markiert und keine behauptete
+              Abwesenheit.
             </p>
             <p class="hint">
               Große Ausgaben werden in der Oberfläche gekürzt. Die vollständige
@@ -721,10 +1040,6 @@ button.buy
               <li>
                 „command not found“: REA ist nicht global installiert →
                 <code>HUSKY=0 npm link</code> in <code>~/rea</code>.
-              </li>
-              <li>
-                „jadx … not configured“: JADX/JDK fehlt. Der Status zeigt die
-                genaue Meldung.
               </li>
               <li>
                 „Is a directory“: Es wurde ein Ordner statt einer Datei
@@ -754,11 +1069,13 @@ button.buy
           <article class="card">
             <h3>MCP verbinden</h3>
             <p>
-              Der MCP-Server läuft auf Port <code>8765</code>. Ein MCP-Client
-              auf dem Laptop erreicht ihn nach
+              Wenn der MCP-Server läuft, erreicht ihn ein MCP-Client auf Port
+              <code>8765</code>. Vom Laptop geht das nach
               <code>adb forward tcp:8765 tcp:8765</code> über
               <code>http://127.0.0.1:8765/mcp</code>. Ein normales Browser-GET
               auf diese URL ist kein gültiger MCP-Aufruf und kann 406 liefern.
+              Den aktuellen Dienststatus und die Einrichtung findest du unter
+              <strong>Mehr → MCP-Server</strong>.
             </p>
           </article>
         </div>
@@ -771,23 +1088,267 @@ button.buy
             <h3 id="resultTitle">Ausgabe</h3>
           </div>
           <div class="result-actions">
-            <button class="btn small" id="copyResult">Kopieren</button>
-            <button class="btn small" id="downloadResult">Speichern</button>
+            <button class="btn small" id="copyResult">Bericht kopieren</button>
+            <button class="btn small" id="downloadResult">
+              Bericht speichern
+            </button>
+            <details class="export-menu web-only hidden" id="exportMenu">
+              <summary class="btn small">
+                Weitere Exporte <span aria-hidden="true">▾</span>
+              </summary>
+              <div class="export-menu-list">
+                <div class="export-group">
+                  <span class="export-group-title">Events</span>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="copyWebEvents"
+                  >
+                    Text kopieren
+                  </button>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="downloadWebEvents"
+                  >
+                    CSV speichern
+                  </button>
+                </div>
+                <div class="export-group">
+                  <span class="export-group-title">Evidenzpfade</span>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="copyWebPaths"
+                  >
+                    Text kopieren
+                  </button>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="downloadWebPaths"
+                  >
+                    CSV speichern
+                  </button>
+                </div>
+                <div class="export-group">
+                  <span class="export-group-title">Alles</span>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="copyWebJson"
+                  >
+                    JSON kopieren
+                  </button>
+                  <button
+                    class="btn small ghost"
+                    type="button"
+                    id="downloadWebJson"
+                  >
+                    JSON speichern
+                  </button>
+                </div>
+              </div>
+            </details>
             <button class="btn small ghost" id="closeResult">Schließen</button>
           </div>
         </div>
         <div class="result-meta" id="resultMeta"></div>
+        <section class="web-progress hidden" id="webProgress" aria-live="polite">
+          <div class="web-progress-head">
+            <strong id="webProgressLabel">Lauf wird vorbereitet …</strong>
+            <span id="webProgressPercent">0 %</span>
+          </div>
+          <div class="web-progress-track">
+            <div class="web-progress-bar" id="webProgressBar"></div>
+          </div>
+          <p class="hint" id="webProgressDetail">
+            REA prüft Browser und Seite. Das kann einige Sekunden dauern.
+          </p>
+          <ol class="web-progress-steps" id="webProgressSteps">
+            <li data-stage="preflight">Browser prüfen</li>
+            <li data-stage="prepare">Seite vorbereiten</li>
+            <li data-stage="capture">Aufnehmen</li>
+            <li data-stage="scripts">Skripte exportieren</li>
+            <li data-stage="analyze">JavaScript analysieren</li>
+            <li data-stage="report">Bericht erstellen</li>
+          </ol>
+        </section>
         <p class="hint result-help" id="resultHelp"></p>
         <details class="command-box hidden" id="commandBox">
           <summary>Ausgeführter Befehl</summary>
           <code id="resultCommand"></code>
         </details>
-        <pre class="output" id="resultOutput"></pre>
+        <section class="result-overview hidden" id="resultOverview">
+          <div class="overview-grid">
+            <article class="overview-card" id="overviewRequestsCard">
+              <span class="overview-label">Requests</span>
+              <strong id="overviewRequests">–</strong>
+              <span class="overview-help"
+                >Anfragen, die der Browser an den Server gestellt hat.</span
+              >
+            </article>
+            <article class="overview-card" id="overviewEventsCard">
+              <span class="overview-label">Events</span>
+              <strong id="overviewEvents">–</strong>
+              <span class="overview-help" id="overviewEventsHelp"
+                >Behaltene und verworfene Ereignisse.</span
+              >
+            </article>
+            <article class="overview-card" id="overviewCompletenessCard">
+              <span class="overview-label">Abschluss</span>
+              <strong id="overviewCompleteness">–</strong>
+              <span class="overview-help" id="overviewCompletenessHelp"
+                >Ob alle Bereiche aufgenommen wurden.</span
+              >
+            </article>
+            <article class="overview-card" id="overviewAnalysisCard">
+              <span class="overview-label">JavaScript</span>
+              <strong id="overviewAnalysis">–</strong>
+              <span class="overview-help" id="overviewAnalysisHelp"
+                >Ob die exportierten Skripte geprüft wurden.</span
+              >
+            </article>
+          </div>
+          <p class="hint" id="overviewNote"></p>
+        </section>
+        <section class="evidence-panel hidden" id="evidencePanel">
+          <div class="card-head">
+            <div>
+              <h4>Beweise &amp; Skripte</h4>
+              <p class="hint">
+                Originaldateien des Laufs. Du kannst sie hier ansehen oder
+                einzeln herunterladen.
+              </p>
+            </div>
+          </div>
+          <div class="evidence-actions" id="evidenceActions"></div>
+          <div class="evidence-tree hidden" id="evidenceTree">
+            <div class="card-head">
+              <div>
+                <h5>Skripte</h5>
+                <p class="hint" id="evidenceTreeMeta"></p>
+              </div>
+              <button
+                class="btn small ghost"
+                type="button"
+                id="evidenceTreeClose"
+              >
+                Schließen
+              </button>
+            </div>
+            <div class="script-list" id="evidenceTreeList"></div>
+          </div>
+        </section>
+        <section class="request-table hidden" id="requestTableSection">
+          <div class="request-table-head">
+            <div>
+              <h4 id="requestTableTitle">Requests</h4>
+              <p class="hint">
+                Klicke auf eine Spalte, um zu sortieren. Tippe in das Feld, um
+                zu filtern. „Text kopieren“ und „CSV speichern“ übernehmen
+                genau die sichtbaren Zeilen in dieser Sortierung. Die
+                vollständige Tabelle bleibt in „Bericht kopieren“ und
+                „Bericht speichern“ erhalten.
+              </p>
+            </div>
+            <label class="request-filter">
+              <span>Filter</span>
+              <input
+                id="requestFilter"
+                type="search"
+                placeholder="z. B. .js, GET, 404, script"
+                autocomplete="off"
+              />
+            </label>
+            <div class="request-table-actions">
+              <button class="btn small ghost" type="button" id="requestReset">
+                Zurücksetzen
+              </button>
+              <button
+                class="btn small ghost"
+                type="button"
+                id="requestCopyText"
+              >
+                Text kopieren
+              </button>
+              <button class="btn small ghost" type="button" id="requestCsv">
+                CSV speichern
+              </button>
+            </div>
+          </div>
+          <div class="request-table-scroll">
+            <table class="request-table-grid" id="requestTableGrid"></table>
+          </div>
+          <p class="request-table-status" id="requestTableStatus"></p>
+        </section>
+        <details class="raw-report" id="rawReport">
+          <summary>Vollständigen Bericht anzeigen</summary>
+          <pre class="output" id="resultOutput"></pre>
+          <pre class="output hidden" id="resultOutputTail"></pre>
+        </details>
         <pre class="output error-output hidden" id="resultError"></pre>
       </article>
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <div
+      class="copy-fallback hidden"
+      id="copyFallback"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="copyFallbackTitle"
+    >
+      <div class="copy-fallback-box">
+        <h4 id="copyFallbackTitle">Kopieren nicht möglich</h4>
+        <p class="hint">
+          Dieser Browser erlaubt keinen Zugriff auf die Zwischenablage. Der
+          Text ist unten markiert: Kopiere ihn mit langer Berührung →
+          „Kopieren“ oder mit Strg+C.
+        </p>
+        <textarea
+          id="copyFallbackText"
+          readonly
+          spellcheck="false"
+          rows="8"
+        ></textarea>
+        <div class="copy-fallback-actions">
+          <button class="btn small" type="button" id="copyFallbackSelect">
+            Alles markieren
+          </button>
+          <button class="btn small ghost" type="button" id="copyFallbackClose">
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="artifact-viewer hidden"
+      id="artifactViewer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="artifactViewerTitle"
+    >
+      <div class="artifact-viewer-box">
+        <div class="artifact-viewer-head">
+          <div>
+            <h4 id="artifactViewerTitle">Datei ansehen</h4>
+            <p class="hint" id="artifactViewerMeta"></p>
+          </div>
+          <div class="artifact-viewer-actions">
+            <a class="btn small" id="artifactDownload" download>Herunterladen</a>
+            <button
+              class="btn small ghost"
+              type="button"
+              id="artifactClose"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+        <pre id="artifactViewerText"></pre>
+      </div>
+    </div>
     <script src="/app.js" defer></script>
   </body>
 </html>

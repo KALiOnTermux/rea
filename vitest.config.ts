@@ -132,6 +132,11 @@ const PROJECT_POLICIES = {
     maxWorkers: MAX_TEST_WORKERS,
     // Evaluator tests inspect deterministic inputs without mutating shared state.
   },
+  "ui-evidence": {
+    pool: "forks" as const,
+    maxWorkers: MAX_TEST_WORKERS,
+    // The UI evidence suite checks only the standalone ZIP evidence resolver.
+  },
 };
 
 const ZERO_COVERAGE_THRESHOLDS = {

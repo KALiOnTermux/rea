@@ -41,6 +41,12 @@ export const SOURCE_TEST_PROJECTS = [
     isolate: false,
     include: ["tests/evaluation/**/*.test.ts"],
   },
+  {
+    name: "ui-evidence",
+    group: "source",
+    isolate: false,
+    include: ["ui/**/*.test.mjs"],
+  },
 ];
 
 export const BUILT_TEST_PROJECTS = [
@@ -95,7 +101,7 @@ export const projectForTest = (testPath) => {
     testPath.startsWith("/") ||
     testPath.includes("\\") ||
     testPath.split("/").some((part) => part === ".." || part === ".") ||
-    !testPath.endsWith(".test.ts")
+    !/\.test\.(?:ts|mjs)$/u.test(testPath)
   )
     throw new Error(`Expected a normalized repository test path: ${testPath}`);
 

@@ -41,6 +41,7 @@ await withVerifierFixture(temporaryFixture, async () => {
       "--",
       "src",
       "tests",
+      "ui",
     ],
     { cwd: root, maxBuffer: 8 * 1024 * 1024 },
   );
@@ -71,5 +72,5 @@ await withVerifierFixture(temporaryFixture, async () => {
 });
 if (discovered !== undefined)
   console.log(
-    `Discovered all ${discovered} test and spec files in src and tests exactly once.`,
+    `Discovered all ${discovered} test and spec files in src, tests and ui exactly once.`,
   );
