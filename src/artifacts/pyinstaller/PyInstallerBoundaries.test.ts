@@ -285,10 +285,26 @@ it("binds materialization to the inventoried digest and checks cached carrier fr
     await reader.prepareContainer(hash(bytes));
     const before = await stat(path);
     await writeFile(path, archive(Buffer.from("other")));
-    // Identity checks compare nanosecond timestamps, and a coarse filesystem
-    // clock can leave them unchanged across a same-size rewrite. Advance the
-    // modification time so the cached binding sees a carrier that moved.
+    // The binding's cached digest is revalidated against the carrier's
+    // identity: dev, ino, size, mode and the nanosecond timestamps. This
+    // rewrite keeps the first four, so only the clock can report it. A coarse
+    // filesystem clock repeats the same tick for a write microseconds after
+    // the baseline stat, so advance the modification time to make the cached
+    // digest observably stale.
     await utimes(path, before.atime, new Date(before.mtimeMs + 1_000));
+    const after = await stat(path);
+    expect({
+      dev: after.dev,
+      ino: after.ino,
+      size: after.size,
+      mode: after.mode,
+    }).toEqual({
+      dev: before.dev,
+      ino: before.ino,
+      size: before.size,
+      mode: before.mode,
+    });
+    expect(after.mtimeMs).not.toBe(before.mtimeMs);
     await expect(reader.prepareContainer(hash(bytes))).rejects.toMatchObject({
       reason: "integrity",
     });

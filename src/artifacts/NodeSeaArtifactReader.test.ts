@@ -1147,11 +1147,26 @@ it.each(["valid replacement", "malformed blob"] as const)(
         expect(args[1]).toBe("node-sea");
         const before = statSync(args[0]);
         writeFileSync(args[0], replacement);
-        // Identity checks compare nanosecond timestamps, and a coarse
-        // filesystem clock can leave them unchanged across a same-size
-        // rewrite. Advance the modification time so the replacement is
-        // observable in every case this test distinguishes.
+        // The reader rechecks the carrier's identity, which compares dev, ino,
+        // size, mode and the nanosecond timestamps. This rewrite keeps the
+        // first four: only the clock can disagree. A coarse filesystem clock
+        // reports the same tick for a write microseconds after the baseline
+        // stat, so advance the modification time to keep the timestamp the
+        // signal under test instead of the tick it landed in.
         utimesSync(args[0], before.atime, new Date(before.mtimeMs + 1_000));
+        const after = statSync(args[0]);
+        expect({
+          dev: after.dev,
+          ino: after.ino,
+          size: after.size,
+          mode: after.mode,
+        }).toEqual({
+          dev: before.dev,
+          ino: before.ino,
+          size: before.size,
+          mode: before.mode,
+        });
+        expect(after.mtimeMs).not.toBe(before.mtimeMs);
         const reader = createReader(...args);
         if (reader instanceof NodeSeaArtifactReader) created = reader;
         return reader;
