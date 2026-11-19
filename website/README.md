@@ -79,6 +79,58 @@ before `arch` gets purged and the preview fails again. For other systems, see
 [CairoSVG's installation instructions](https://cairosvg.org/documentation/#installation).
 CI installs both packages explicitly before rendering the card.
 
+Without root access, unpack the Debian packages into a user prefix instead of
+installing them. CairoSVG only needs the shared libraries and a fontconfig
+configuration that points at the unpacked fonts, so the card renders the same.
+A missing library surfaces as `Cannot prepare sharing image: no library called
+"cairo-2" was found`, and `check` fails rather than shipping a stale card.
+
+```sh
+root="$HOME/.local/website-libs"
+lists=/tmp/apt-lists
+mkdir -p "$lists/partial" "$root/debs"
+apt-get -o Dir::State::lists="$lists" -o Dir::Cache=/tmp/apt-cache update
+cd "$root/debs"
+apt-get -o Dir::State::lists="$lists" download \
+  libcairo2 libpixman-1-0 libpng16-16t64 libfreetype6 libfontconfig1 \
+  libxcb-render0 libxrender1 libxext6 libexpat1 libbrotli1 liblzo2-2 \
+  libbz2-1.0 libzstd1 libuuid1 libgraphite2-3 libharfbuzz0b \
+  libglib2.0-0t64 fonts-dejavu-core
+for deb in ./*.deb; do dpkg-deb -x "$deb" "$root"; done
+cat > "$root/fonts.conf" <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>$root/usr/share/fonts</dir>
+  <cachedir>$root/font-cache</cachedir>
+</fontconfig>
+EOF
+```
+
+`apt-get update` needs package lists somewhere writable, which is what `lists`
+provides. The packages unpack under `$root/usr`, and the architecture directory
+in `LD_LIBRARY_PATH` follows the host (`x86_64-linux-gnu` below). Run the check
+from the repository root in the same shell, so `$root` is still set:
+
+```sh
+LD_LIBRARY_PATH="$root/usr/lib/x86_64-linux-gnu" \
+  FONTCONFIG_FILE="$root/fonts.conf" \
+  website/.venv/bin/python3 scripts/website.py check
+```
+
+The prefix and its configuration are host state, not repository content; keep
+them outside the checkout. `ctypes.util.find_library('cairo')` still reports
+`None` on such a host, because `ldconfig` does not index the prefix, so verify
+with a render instead:
+
+```sh
+LD_LIBRARY_PATH="$root/usr/lib/x86_64-linux-gnu" website/.venv/bin/python3 -c "
+import cairosvg
+cairosvg.svg2png(bytestring=b'<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"/>')
+print('cairo renders')
+"
+```
+
 To test the GitHub Pages prefix, use
 `python3 scripts/website.py serve --port 4174 --base-path /rea/` and open
 <http://127.0.0.1:4174/rea/>.
