@@ -77,3 +77,14 @@ Thumbs.db
 website/_site/
 # Temporary translation output prepared before replacing the complete site.
 website/.i18n-*/
+
+# Local analysis runs, raw captures and planning notes for this checkout.
+# They stay on the machine that produced them; only their conclusions belong in
+# committed docs and tests.
+/artifacts/
+/curl-8.14.1-option-table.csv
+/curl-8.14.1-param-map.csv
+/notes-browser-capture.json
+/REA-CURL-INVESTIGATION.md
+/REA-IMPLEMENTATION-PLAN.md
+/REA-SETUP-TODO.md
