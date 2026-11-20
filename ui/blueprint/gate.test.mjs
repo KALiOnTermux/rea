@@ -369,6 +369,19 @@ for (const row of ROWS) {
   });
 }
 
+test("a ledger entry whose source is not packaged is unknown", () => {
+  const pkg = base();
+  pkg.ledger.entries[0].source = {
+    path: "source/missing.mjs",
+    selector: { type: "line", line: 3 },
+  };
+  const result = run(pkg);
+  assert.deepEqual(
+    [...new Set(result.violations.map((violation) => violation.code))],
+    ["ledger.item.unknown"],
+  );
+});
+
 test("a stale closure block cannot claim completeness", () => {
   const pkg = base();
   pkg.ledger.entries[1].status = "gap";

@@ -3275,6 +3275,7 @@ export async function buildBlueprint(config) {
   });
   analysis.source_included = ctx.includeSources;
   analysis.target = target;
+  analysis.omitted = [...(ctx.bundle.omitted ?? [])];
   analysis.bundle = {
     files: ctx.bundle.entries.length + 8,
     bytes_raw: ctx.bundle.rawBytes,

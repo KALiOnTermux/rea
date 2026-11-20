@@ -240,7 +240,7 @@ function checkClaims({
   }
 }
 
-function checkLedger({ ledger, claims, violations }) {
+function checkLedger({ ledger, claims, ctx, violations }) {
   if (!ledger || typeof ledger !== "object") {
     violations.push(
       violation(
@@ -261,7 +261,22 @@ function checkLedger({ ledger, claims, violations }) {
     }
     violations.push(violation(item.code, item.subject, item.detail));
   }
+  const files = new Set(asArray(ctx?.files));
   for (const entry of asArray(ledger.entries)) {
+    // spec §6: every `source` reference must resolve, so an entry cannot point at
+    // provenance the package does not contain.
+    if (entry.source !== undefined) {
+      const path = entry.source?.path;
+      if (typeof path !== "string" || !files.has(path)) {
+        violations.push(
+          violation(
+            "ledger.item.unknown",
+            entry.id,
+            `ledger entry ${entry.id} cites the source ${String(path)}, which the package does not contain`,
+          ),
+        );
+      }
+    }
     for (const id of asArray(entry.claims)) {
       if (!claimIds.has(id)) {
         violations.push(
@@ -379,7 +394,7 @@ export function gate(bp, ledger = null, acceptance = null, ctx = {}) {
   const manifest = ctx?.manifest ?? null;
   const violations = [];
   checkClaims({ claims, blueprint, ledger, acceptance, ctx, violations });
-  checkLedger({ ledger, claims, violations });
+  checkLedger({ ledger, claims, ctx, violations });
   checkAcceptance({ blueprint, acceptance, ctx, violations });
   checkBundle({ ctx, violations });
   checkRender({ ctx, violations });

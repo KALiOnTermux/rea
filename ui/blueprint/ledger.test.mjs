@@ -167,6 +167,27 @@ test("entry ids must be class:subject", () => {
   );
 });
 
+test("bundle omissions become blocking ledger gaps", () => {
+  const analysis = toAnalysis(webBuilt(), webCtx());
+  analysis.omitted = ["source/web/app.js"];
+  const ledger = ledgerFromAnalysis(analysis);
+  const entry = ledger.entries.find(
+    (item) => item.id === "bundle:source/web/app.js",
+  );
+  assert.equal(Boolean(entry), true);
+  assert.equal(entry.status, "gap");
+  assert.equal(entry.gap.blocking, true);
+  assert.equal(entry.gap.id, "bundle:source/web/app.js");
+  const bundle = ledger.denominators.find((item) => item.class === "bundle");
+  assert.equal(bundle.items, 1);
+  assert.equal(bundle.blind_spots.length > 0, true);
+  const plain = ledgerFromAnalysis(toAnalysis(webBuilt(), webCtx()));
+  assert.equal(
+    plain.denominators.some((item) => item.class === "bundle"),
+    false,
+  );
+});
+
 test("ledgerFromAnalysis materialises exactly the stage-2 entry ids", () => {
   const analysis = toAnalysis(webBuilt(), webCtx());
   const ledger = ledgerFromAnalysis(analysis);

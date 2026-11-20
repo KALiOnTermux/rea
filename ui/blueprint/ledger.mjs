@@ -327,6 +327,37 @@ export function ledgerFromAnalysis(analysis) {
     denominators.push(...webDenominators(analysis));
     entries.push(...webEntries(analysis, claims));
   }
+  // Files the bundle caps dropped (spec §6): a truncated source or evidence tree
+  // must not let the package look closed, so each omission is a blocking gap.
+  const omitted = Array.isArray(analysis?.omitted) ? analysis.omitted : [];
+  if (omitted.length > 0) {
+    denominators.push(
+      denominator({
+        class: "bundle",
+        probe: `${targetClass}.bundle-omissions`,
+        items: omitted.length,
+        blind_spots: [
+          "Vom Bundle-Cap verworfene Dateien sind nicht prüfbar; sie bleiben als blockierende Lücke stehen.",
+        ],
+      }),
+    );
+    for (const path of omitted) {
+      entries.push({
+        id: `bundle:${path}`,
+        class: "bundle",
+        subject: path,
+        status: "gap",
+        claims: [],
+        gap: {
+          id: `bundle:${path}`,
+          why: `Das Paket lässt ${path} aus, weil ein Bundle-Cap gegriffen hat.`,
+          action:
+            "Bundle-Cap anheben oder die Quelle verkleinern und die Blaupause neu erzeugen.",
+          blocking: true,
+        },
+      });
+    }
+  }
   return buildLedger({
     ceiling: analysis?.ceiling?.ceiling ?? "inferred-only",
     denominators,
