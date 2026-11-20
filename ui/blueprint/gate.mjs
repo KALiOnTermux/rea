@@ -11,7 +11,7 @@
  */
 
 import { CEILING_ORDER } from "./ceiling.mjs";
-import { ledgerViolations, OUT_OF_SCOPE_SHARE } from "./ledger.mjs";
+import { closure, ledgerViolations, OUT_OF_SCOPE_SHARE } from "./ledger.mjs";
 import { verifyManifest } from "./manifest.mjs";
 
 export const VIOLATION_CODES = [
@@ -391,7 +391,9 @@ export function gate(bp, ledger = null, acceptance = null, ctx = {}) {
       compareStrings(left.subject, right.subject),
   );
   const ok = violations.length === 0;
-  const coverage = ledger?.closure?.ratio ?? 0;
+  // Recomputed from the entries, never read from the ledger's own closure block:
+  // a stale or edited block must not be able to claim completeness.
+  const coverage = closure(ledger).ratio;
   let status = "open";
   if (ok && coverage === 1) status = "complete";
   else if (coverage > 0 || asArray(claims).length > 0) status = "partial";

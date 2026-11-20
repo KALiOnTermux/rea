@@ -369,6 +369,21 @@ for (const row of ROWS) {
   });
 }
 
+test("a stale closure block cannot claim completeness", () => {
+  const pkg = base();
+  pkg.ledger.entries[1].status = "gap";
+  pkg.ledger.entries[1].gap = {
+    id: "step:1",
+    why: "nicht belegt",
+    action: "Beleg ergänzen",
+    blocking: false,
+  };
+  const result = run(pkg);
+  assert.equal(result.ok, true);
+  assert.equal(result.coverage, 0.5);
+  assert.equal(result.status, "partial");
+});
+
 test("an incomplete package without allowIncomplete throws a gate error", () => {
   const pkg = base();
   pkg.blueprint.acceptance = ["Kriterium A", "Kriterium B"];
