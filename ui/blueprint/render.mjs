@@ -63,6 +63,13 @@ export function renderClaimsSection(claims) {
   return lines;
 }
 
+/** Escapes a table cell, so a pipe or newline in a criterion cannot break the table. */
+function cell(value) {
+  return String(value ?? "—")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ");
+}
+
 export function renderMarkdown(compiled) {
   const bp = compiled.blueprint;
   const lines = [];
@@ -915,7 +922,41 @@ export function renderMarkdown(compiled) {
   add(...renderClaimsSection(compiled.claims));
 
   section("8. Abnahmekriterien", () => {
-    for (const item of bp.acceptance) bullet(`[ ] ${item}`);
+    const checks = Array.isArray(compiled.acceptance?.checks)
+      ? compiled.acceptance.checks
+      : [];
+    const byCriterion = new Map();
+    for (const check of checks) {
+      const list = byCriterion.get(check.criterion) ?? [];
+      list.push(check);
+      byCriterion.set(check.criterion, list);
+    }
+    const criteria = [...bp.acceptance];
+    for (const check of checks) {
+      if (!criteria.includes(check.criterion)) criteria.push(check.criterion);
+    }
+    add("| Kriterium | Prüfung | Art | Fixture |");
+    add("| --- | --- | --- | --- |");
+    let missing = 0;
+    for (const criterion of criteria) {
+      const matched = byCriterion.get(criterion) ?? [];
+      if (matched.length === 0) {
+        missing += 1;
+        add(`| ${cell(criterion)} | fehlt | — | — |`);
+        continue;
+      }
+      for (const check of matched) {
+        add(
+          `| ${cell(criterion)} | ${cell(check.id)} | ${cell(check.kind)} | ${cell(check.fixture ?? "—")} |`,
+        );
+      }
+    }
+    add("");
+    add(
+      missing > 0
+        ? `${missing} Kriterium/Kriterien ohne Prüfung; das blockiert \`complete\`.`
+        : "Jedes Kriterium hat eine ausführbare Prüfung.",
+    );
   });
 
   section("9. Offene Punkte", () => {
@@ -957,12 +998,14 @@ export function renderMarkdown(compiled) {
     }
     add("");
     part("Behauptungen und ihre Belege", () => {
+      add("| Behauptung | Art | Ceiling | Beleg | Falsifier |");
+      add("| --- | --- | --- | --- | --- |");
       for (const claim of compiled.claims) {
         const refs = claim.evidence
           .map((entry) => `\`${entry.path}\``)
-          .join(", ");
-        bullet(
-          `\`${claim.falsifier}\` (${claim.kind}, ${claim.ceiling}) — Beleg: ${refs || "kein Beleg"}`,
+          .join("<br>");
+        add(
+          `| \`${claim.id}\` | ${claim.kind} | ${claim.ceiling} | ${refs || "kein Beleg"} | \`${claim.falsifier}\` |`,
         );
       }
     });

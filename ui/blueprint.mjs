@@ -3337,6 +3337,8 @@ export async function buildBlueprint(config) {
       "BLUEPRINT.md      Der vollständige Bauplan (zuerst lesen).",
       "AGENT-PROMPT.md   Fertiger Auftrag zum Kopieren in einen Coding-Agenten.",
       "blueprint.json    Dieselben Fakten maschinenlesbar.",
+      "ledger.json       Abschluss-Ledger: Nenner, Einträge, Coverage.",
+      "acceptance.json   Ausführbare Abnahmeprüfungen (http, dom, structure, …).",
       "MANIFEST.json     Jede Datei mit Größe und SHA-256.",
       "schemas/          JSON-Schemas für Behauptungen, Ledger und Manifest.",
       "evidence/         Aufnahmen, Analysen und Werkzeugergebnisse.",

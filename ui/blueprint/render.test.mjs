@@ -167,6 +167,58 @@ function sections(markdown) {
 
 const countOf = (haystack, needle) => haystack.split(needle).length - 1;
 
+const escapeRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+test("section 8 renders one row per check and marks a criterion without one", () => {
+  const base = compiled();
+  const withAcceptance = {
+    ...base,
+    blueprint: {
+      ...base.blueprint,
+      acceptance: ["`--help` endet mit Exit 0.", "Kein Check dafür."],
+    },
+    acceptance: {
+      schema: "rea.blueprint.acceptance",
+      schema_version: 1,
+      checks: [
+        {
+          id: "acceptance.http.help",
+          kind: "http",
+          criterion: "`--help` endet mit Exit 0.",
+          fixture: "evidence/network.json",
+        },
+      ],
+    },
+  };
+  const section = sections(renderMarkdown(withAcceptance)).get(
+    "8. Abnahmekriterien",
+  );
+  assert.match(section, /\| Kriterium \| Prüfung \| Art \| Fixture \|/);
+  assert.match(section, /acceptance\.http\.help/);
+  assert.match(section, /\| http \|/);
+  assert.match(section, /evidence\/network\.json/);
+  assert.match(section, /Kein Check dafür\./);
+  assert.match(section, /fehlt/);
+  assert.match(section, /blockiert `complete`/);
+});
+
+test("section 10 lists kind, ceiling, evidence path and falsifier per claim", () => {
+  const section = sections(renderMarkdown(compiled())).get(
+    "10. Beweise im Paket",
+  );
+  for (const claim of compiled().claims) {
+    assert.match(section, new RegExp(escapeRegex(claim.id)));
+    assert.match(section, new RegExp(escapeRegex(claim.falsifier)));
+  }
+  for (const kind of ["observed", "derived", "assumed"]) {
+    assert.match(section, new RegExp(kind));
+  }
+  assert.match(section, /statically-evidenced/);
+  assert.match(section, /inferred-only/);
+  assert.match(section, /evidence\/network\.json/);
+});
+
 test("the three claim kinds get their own sections in order", () => {
   const markdown = renderMarkdown(compiled());
   const observedAt = markdown.indexOf("## 5. Beobachtet (observed)");
