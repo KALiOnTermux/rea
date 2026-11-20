@@ -59,6 +59,9 @@ async function build(capturePath) {
     artifactsDir,
     includeSources: false,
     reaVersion: "rea-test",
+    // A capture without routes or assets closes at ratio < 1, so the fail-closed
+    // gate only writes it on the explicit allowIncomplete path (stage 3).
+    allowIncomplete: true,
     onProgress: () => {},
   });
   return result;

@@ -1567,6 +1567,7 @@ async function handleBlueprintBuild(req, res) {
       input,
       includeSources: body?.includeSources !== false,
       fullSources: body?.fullSources === true,
+      allowIncomplete: body?.allowIncomplete === true,
       artifactsDir: ARTIFACTS_DIR,
       projectRoot: ROOT,
       reaVersion: status.version,
@@ -1598,6 +1599,8 @@ async function handleBlueprintBuild(req, res) {
       ceiling: result.blueprint.ceiling,
       claims: result.blueprint.claims ?? [],
       completeness: result.blueprint.completeness,
+      violations: result.violations ?? [],
+      gate: result.gate ?? null,
       openQuestions: result.blueprint.open_questions,
       evidence: result.blueprint.evidence,
       markdown: result.markdown,
@@ -1608,6 +1611,22 @@ async function handleBlueprintBuild(req, res) {
       directory: result.dir,
     });
   } catch (error) {
+    if (error?.code === "blueprint.gate") {
+      finishBlueprintProgress(
+        "error",
+        "Blaupause nicht abgeschlossen",
+        "Das Gate hat das Paket abgelehnt.",
+      );
+      json(res, 409, {
+        ok: false,
+        code: "blueprint.gate",
+        error:
+          "Die Blaupause ist nicht abgeschlossen. Die Lücken sind aufgeführt; mit ausdrücklicher Freigabe lässt sie sich dennoch erzeugen.",
+        coverage: error.coverage ?? 0,
+        violations: error.violations ?? [],
+      });
+      return;
+    }
     const statusCode = Number(error?.statusCode) || 500;
     finishBlueprintProgress(
       "error",

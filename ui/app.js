@@ -96,7 +96,10 @@ async function api(path, options = {}) {
     data = { error: raw || `HTTP ${response.status}` };
   }
   if (!response.ok) {
-    throw new Error(data?.error || `HTTP ${response.status}`);
+    const error = new Error(data?.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -2739,7 +2742,7 @@ function failBlueprintProgress(message) {
   $("#blueprintProgressDetail").textContent = message;
 }
 
-async function buildBlueprintNow() {
+async function buildBlueprintNow(options = {}) {
   if (state.blueprintBusy) {
     toast("Es wird bereits eine Blaupause erstellt.");
     return;
@@ -2762,6 +2765,7 @@ async function buildBlueprintNow() {
         input: info.input,
         includeSources: $("#blueprintSources").checked,
         fullSources: $("#blueprintFull").checked,
+        allowIncomplete: options?.allowIncomplete === true,
       }),
     });
     renderBlueprintResult(result);
@@ -2774,6 +2778,14 @@ async function buildBlueprintNow() {
     });
     toast("Blaupause ist fertig.");
   } catch (error) {
+    if (error?.status === 409 && Array.isArray(error.data?.violations)) {
+      renderGateViolations(error.data);
+      const message =
+        "Die Blaupause ist nicht abgeschlossen; die Lücken stehen im Panel.";
+      failBlueprintProgress(message);
+      toast(message, true);
+      return;
+    }
     const message = friendlyClientError(error);
     failBlueprintProgress(message);
     toast(message, true);
@@ -2782,6 +2794,49 @@ async function buildBlueprintNow() {
     state.blueprintBusy = false;
     refreshBlueprintPanel();
   }
+}
+
+/**
+ * The gate refused the package: show every violation and let the operator ship it
+ * deliberately as incomplete instead of hiding the refusal.
+ */
+function renderGateViolations(data) {
+  const root = $("#blueprintCompleteness");
+  root.classList.remove(
+    "hidden",
+    "status-complete",
+    "status-partial",
+    "status-insufficient",
+  );
+  root.classList.add("status-insufficient");
+  $("#blueprintCompletenessLabel").textContent = "Nicht abgeschlossen";
+  $("#blueprintCompletenessScore").textContent = `${Math.round(
+    (data.coverage ?? 0) * 100,
+  )} % · ${data.violations.length} Verstöße`;
+
+  const checks = $("#blueprintCompletenessChecks");
+  checks.replaceChildren();
+  const gaps = $("#blueprintCompletenessGaps");
+  gaps.replaceChildren();
+  for (const violation of data.violations) {
+    const item = document.createElement("div");
+    item.className = "completeness-gap";
+    const title = document.createElement("strong");
+    title.textContent = `${violation.code} · ${violation.subject}`;
+    const why = document.createElement("p");
+    why.textContent = violation.detail || "";
+    item.append(title, why);
+    gaps.append(item);
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn";
+  button.textContent = "Trotzdem als unvollständig erzeugen";
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    buildBlueprintNow({ allowIncomplete: true });
+  });
+  gaps.append(button);
 }
 
 function renderBlueprintCompleteness(completeness) {

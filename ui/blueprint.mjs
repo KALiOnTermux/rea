@@ -15,6 +15,7 @@ import { basename, join, relative } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { analysisDigest, toAnalysis } from "./blueprint/analysis.mjs";
 import { COMPILER_ID, compile } from "./blueprint/compile.mjs";
+import { BlueprintGateError, gate } from "./blueprint/gate.mjs";
 import { buildManifest } from "./blueprint/manifest.mjs";
 import {
   blueprintKind,
@@ -3199,6 +3200,43 @@ function probesFor(kind, built) {
   return tags.map((tag) => ({ id: tag, tags: [tag] }));
 }
 
+/**
+ * Coverage is a projection of the gate, never a threshold: a package is only
+ * `belegt` when the gate accepted it and the ledger closed at ratio 1.
+ */
+export function coverageStatus(result) {
+  if (!result?.ok || (result.violations ?? []).length > 0) return "offen";
+  return result.coverage === 1 ? "belegt" : "teilweise";
+}
+
+/**
+ * Turns the gate result into the completeness block the document renders.
+ *
+ * `status` and `gaps` come from the violations; the probe rows stay as
+ * informational checks so a reader still sees what was looked at.
+ */
+function projectCompleteness(probe, result) {
+  const status =
+    result.ok && result.coverage === 1
+      ? "complete"
+      : result.ok
+        ? "partial"
+        : "insufficient";
+  return {
+    ...probe,
+    status,
+    score: Math.round((result.coverage ?? 0) * 100),
+    passed: (probe.checks ?? []).filter((check) => check.ok).length,
+    gaps: result.violations.map((violation) => ({
+      id: violation.code,
+      label: violation.subject,
+      why: violation.detail,
+      action:
+        "Beleg oder ausführbare Abnahmeprüfung ergänzen und die Blaupause neu erzeugen.",
+    })),
+  };
+}
+
 export async function buildBlueprint(config) {
   const ctx = createContext(config);
   ctx.id = `bp-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
@@ -3246,25 +3284,41 @@ export async function buildBlueprint(config) {
   const compiled = compile(analysis);
   const bp = compiled.blueprint;
 
+  const ledger = compiled.ledger;
   progress(
     ctx,
     "verify",
     "Vollständigkeit wird geprüft",
-    "Oberfläche, Verhalten, Innenleben, Verträge und Lücken werden gegen den Zieltyp geprüft.",
+    "Ledger, Behauptungen, Belege und Abnahmekriterien werden gegen den Zieltyp geprüft.",
     86,
   );
-  // Threshold-based until the closure ledger and the gate replace it (stage 3).
-  bp.completeness = evaluateCompleteness(bp, compiled.prompt, ctx, {
+  const probe = evaluateCompleteness(bp, compiled.prompt, ctx, {
     "BLUEPRINT.md": compiled.markdown,
     "AGENT-PROMPT.md": compiled.prompt,
   });
-  bp.coverage.status =
-    bp.completeness.status === "complete"
-      ? "belegt"
-      : bp.completeness.status === "partial"
-        ? "teilweise"
-        : "offen";
-  bp.coverage.open_points = bp.completeness.gaps.length;
+  const firstGate = gate({
+    blueprint: bp,
+    claims: compiled.claims,
+    ledger,
+    acceptance: compiled.acceptance,
+    ctx: {
+      targetClass: ctx.kind,
+      files: [
+        ...ctx.bundle.entries.map((entry) => entry.name),
+        "BLUEPRINT.md",
+        "AGENT-PROMPT.md",
+        "blueprint.json",
+        "ledger.json",
+        "MANIFEST.json",
+        "README.txt",
+      ],
+      omitted: [...(ctx.bundle.omitted ?? [])],
+    },
+  });
+  bp.completeness = projectCompleteness(probe, firstGate);
+  bp.coverage.status = coverageStatus(firstGate);
+  bp.coverage.ratio = ledger.closure.ratio;
+  bp.coverage.open_points = firstGate.violations.length;
 
   progress(
     ctx,
@@ -3307,6 +3361,23 @@ export async function buildBlueprint(config) {
     );
   }
 
+  const ledgerText = `${JSON.stringify(ledger, null, 2)}\n`;
+  ctx.bundle.addData("ledger.json", ledgerText);
+  const gateReport = firstGate.ok
+    ? null
+    : {
+        schema: "rea.blueprint.gate-report",
+        schema_version: 1,
+        ok: firstGate.ok,
+        status: firstGate.status,
+        coverage: firstGate.coverage,
+        violations: firstGate.violations,
+      };
+  const gateReportText = gateReport
+    ? `${JSON.stringify(gateReport, null, 2)}\n`
+    : null;
+  if (gateReportText) ctx.bundle.addData("GATE-REPORT.json", gateReportText);
+
   const packageFiles = {};
   for (const entry of ctx.bundle.entries) {
     const bytes = bundleEntryBuffer(ctx, entry.name);
@@ -3322,6 +3393,43 @@ export async function buildBlueprint(config) {
   const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
   ctx.bundle.addData("MANIFEST.json", manifestText);
 
+  // Second pass over the packaged bytes: the render and manifest checks need
+  // the documents that were just assembled. Both are structurally satisfied
+  // here, so a difference means the pipeline is inconsistent and the package is
+  // refused instead of being written with a contradiction.
+  const secondGate = gate({
+    blueprint: bp,
+    claims: compiled.claims,
+    ledger,
+    acceptance: compiled.acceptance,
+    manifest,
+    ctx: {
+      targetClass: ctx.kind,
+      files: [...Object.keys(packageFiles), "MANIFEST.json"],
+      omitted: [...(ctx.bundle.omitted ?? [])],
+      markdown,
+      renderMarkdown: () =>
+        renderMarkdown({ blueprint: bp, claims: compiled.claims }),
+      readFile: (path) =>
+        path === "MANIFEST.json"
+          ? Buffer.from(manifestText)
+          : packageFiles[path],
+    },
+  });
+  if (
+    JSON.stringify(secondGate.violations) !==
+    JSON.stringify(firstGate.violations)
+  ) {
+    await rm(ctx.dir, { recursive: true, force: true }).catch(() => {});
+    throw new Error(
+      "blueprint gate did not converge over the packaged documents; refusing to write an inconsistent package",
+    );
+  }
+  if (!secondGate.ok && config.allowIncomplete !== true) {
+    await rm(ctx.dir, { recursive: true, force: true }).catch(() => {});
+    throw new BlueprintGateError(secondGate);
+  }
+
   await writeFile(join(ctx.dir, "BLUEPRINT.md"), markdown, "utf8");
   await writeFile(join(ctx.dir, "AGENT-PROMPT.md"), prompt, "utf8");
   await writeFile(
@@ -3330,6 +3438,10 @@ export async function buildBlueprint(config) {
     "utf8",
   );
   await writeFile(join(ctx.dir, "MANIFEST.json"), manifestText, "utf8");
+  await writeFile(join(ctx.dir, "ledger.json"), ledgerText, "utf8");
+  if (gateReportText) {
+    await writeFile(join(ctx.dir, "GATE-REPORT.json"), gateReportText, "utf8");
+  }
   await mkdir(join(ctx.dir, "schemas"), { recursive: true });
   for (const schema of ["claims", "ledger", "manifest"]) {
     await writeFile(
@@ -3376,6 +3488,13 @@ export async function buildBlueprint(config) {
     markdown,
     prompt,
     blueprint: bp,
+    ledger,
+    violations: secondGate.violations,
+    gate: {
+      ok: secondGate.ok,
+      status: secondGate.status,
+      coverage: secondGate.coverage,
+    },
     counts: {
       surface: Object.keys(bp.surface || {}).length,
       behavior: Object.keys(bp.behavior || {}).length,

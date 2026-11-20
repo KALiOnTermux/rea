@@ -12,13 +12,14 @@
  * - `claims` — the typed records the three sections render from.
  * - `markdown` / `prompt` — the two documents an agent reads.
  * - `manifest` — the file list and named digests, `produced_at` excluded.
- * - `ledger` / `acceptance` — filled by the closure ledger (stage 3) and the
- *   acceptance file (stage 4); `null` until those passes exist.
+ * - `ledger` — the closure ledger with its fixed denominator (stage 3).
+ * - `acceptance` — the executable acceptance file (stage 4); `null` until then.
  */
 
 import { createHash } from "node:crypto";
 import { analysisDigest, canonicalJson } from "./analysis.mjs";
 import { assertUniqueClaimIds, sortClaims } from "./claims.mjs";
+import { ledgerFromAnalysis } from "./ledger.mjs";
 import { buildManifest } from "./manifest.mjs";
 import { renderMarkdown, renderPrompt } from "./render.mjs";
 
@@ -38,6 +39,7 @@ function blueprintFrom(analysis, digest, claims) {
     ceiling: analysis.ceiling,
     coverage: {
       status: "offen",
+      ratio: 0,
       available: facts.coverage ?? [],
       open_points: (facts.open_questions ?? []).length,
     },
@@ -73,10 +75,19 @@ export function compile(analysis) {
   assertUniqueClaimIds(claims);
 
   const blueprint = blueprintFrom(analysis, digest, claims);
+  const ledger = ledgerFromAnalysis(analysis);
+  blueprint.coverage.ratio = ledger.closure.ratio;
+  blueprint.coverage.status =
+    ledger.closure.ratio === 1
+      ? "belegt"
+      : ledger.closure.ratio > 0
+        ? "teilweise"
+        : "offen";
+  blueprint.coverage.open_points = ledger.closure.gap;
   const compiled = {
     blueprint,
     claims,
-    ledger: null,
+    ledger,
     acceptance: null,
   };
   compiled.markdown = renderMarkdown(compiled);
