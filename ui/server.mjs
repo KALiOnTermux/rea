@@ -1595,6 +1595,8 @@ async function handleBlueprintBuild(req, res) {
       zipBytes: result.zipBytes,
       counts: result.counts,
       coverage: result.blueprint.coverage,
+      ceiling: result.blueprint.ceiling,
+      claims: result.blueprint.claims ?? [],
       completeness: result.blueprint.completeness,
       openQuestions: result.blueprint.open_questions,
       evidence: result.blueprint.evidence,

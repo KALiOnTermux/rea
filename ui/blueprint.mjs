@@ -13,6 +13,9 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { inflateRawSync } from "node:zlib";
+import { analysisDigest, toAnalysis } from "./blueprint/analysis.mjs";
+import { COMPILER_ID, compile } from "./blueprint/compile.mjs";
+import { buildManifest } from "./blueprint/manifest.mjs";
 import {
   blueprintKind,
   renderMarkdown,
@@ -2517,7 +2520,6 @@ function evaluateCompleteness(bp, promptDraft, ctx, virtualFiles = {}) {
         })),
       ),
     },
-    checked_at: new Date().toISOString(),
   };
 }
 
@@ -3182,6 +3184,21 @@ async function fileTarget(ctx) {
   return target;
 }
 
+/**
+ * Tags the probes that actually ran.
+ *
+ * A recorded journey is the only execution the studio can prove today, so a
+ * capture with steps supports `executed`; everything else stays statically
+ * evidenced and `resolveCeiling` records the missing grant.
+ */
+function probesFor(kind, built) {
+  const tags = [];
+  if (kind === "web" && (built?.behavior?.steps?.length ?? 0) > 0) {
+    tags.push("journey-executed");
+  }
+  return tags.map((tag) => ({ id: tag, tags: [tag] }));
+}
+
 export async function buildBlueprint(config) {
   const ctx = createContext(config);
   ctx.id = `bp-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
@@ -3206,41 +3223,28 @@ export async function buildBlueprint(config) {
   }
 
   const target = built.target || (await fileTarget(ctx));
-  const bp = {
-    schema: "rea.blueprint",
-    schema_version: 1,
-    id: ctx.id,
-    generated_at: ctx.generatedAt,
-    generator: { name: "REA Studio", command: config.reaVersion || "rea" },
-    target,
-    source_included: ctx.includeSources,
-    coverage: {
-      status:
-        ctx.openQuestions.length === 0
-          ? "belegt"
-          : ctx.openQuestions.length < 4
-            ? "teilweise"
-            : "offen",
-      available: built.coverage || [],
-      open_points: ctx.openQuestions.length,
-    },
-    surface: built.surface || {},
-    behavior: built.behavior || {},
-    internals: built.internals || {},
-    data: built.data || {},
-    dependencies: built.dependencies || [],
-    reconstruction: built.reconstruction || [],
-    acceptance: built.acceptance || [],
-    open_questions: ctx.openQuestions,
+  const analysis = toAnalysis(built, {
+    kind: ctx.kind,
+    target: ctx.target,
+    probes: probesFor(ctx.kind, built),
     evidence: ctx.evidence,
     warnings: ctx.warnings,
     limits: ctx.limits,
-    bundle: {
-      files: ctx.bundle.entries.length + 4,
-      bytes_raw: ctx.bundle.rawBytes,
-      bytes_compressed: ctx.bundle.compressedBytes,
-    },
+    openQuestions: ctx.openQuestions,
+    producedAt: ctx.generatedAt,
+    requestedCeiling: config.requestedCeiling,
+    generator: { name: "REA Studio", command: config.reaVersion || "rea" },
+  });
+  analysis.source_included = ctx.includeSources;
+  analysis.target = target;
+  analysis.bundle = {
+    files: ctx.bundle.entries.length + 8,
+    bytes_raw: ctx.bundle.rawBytes,
+    bytes_compressed: ctx.bundle.compressedBytes,
   };
+
+  const compiled = compile(analysis);
+  const bp = compiled.blueprint;
 
   progress(
     ctx,
@@ -3249,17 +3253,10 @@ export async function buildBlueprint(config) {
     "Oberfläche, Verhalten, Innenleben, Verträge und Lücken werden gegen den Zieltyp geprüft.",
     86,
   );
-  const promptDraft = renderPrompt({
-    blueprint: { ...bp, completeness: null },
-    claims: [],
-  });
-  const markdownDraft = renderMarkdown({
-    blueprint: { ...bp, completeness: null },
-    claims: [],
-  });
-  bp.completeness = evaluateCompleteness(bp, promptDraft, ctx, {
-    "BLUEPRINT.md": markdownDraft,
-    "AGENT-PROMPT.md": promptDraft,
+  // Threshold-based until the closure ledger and the gate replace it (stage 3).
+  bp.completeness = evaluateCompleteness(bp, compiled.prompt, ctx, {
+    "BLUEPRINT.md": compiled.markdown,
+    "AGENT-PROMPT.md": compiled.prompt,
   });
   bp.coverage.status =
     bp.completeness.status === "complete"
@@ -3268,6 +3265,7 @@ export async function buildBlueprint(config) {
         ? "teilweise"
         : "offen";
   bp.coverage.open_points = bp.completeness.gaps.length;
+
   progress(
     ctx,
     "write",
@@ -3275,10 +3273,8 @@ export async function buildBlueprint(config) {
     "Die Dokumente und das Agenten-Briefing entstehen.",
     90,
   );
-  const markdown = renderMarkdown({ blueprint: bp, claims: [] });
-  const prompt = renderPrompt({ blueprint: bp, claims: [] });
-  bp.bundle.bytes_raw +=
-    Buffer.byteLength(markdown) + Buffer.byteLength(prompt);
+  const markdown = renderMarkdown({ blueprint: bp, claims: compiled.claims });
+  const prompt = renderPrompt({ blueprint: bp, claims: compiled.claims });
 
   ctx.bundle.addData("BLUEPRINT.md", markdown);
   ctx.bundle.addData("AGENT-PROMPT.md", prompt);
@@ -3291,13 +3287,40 @@ export async function buildBlueprint(config) {
       "BLUEPRINT.md      Der vollständige Bauplan (zuerst lesen).",
       "AGENT-PROMPT.md   Fertiger Auftrag zum Kopieren in einen Coding-Agenten.",
       "blueprint.json    Dieselben Fakten maschinenlesbar.",
+      "MANIFEST.json     Jede Datei mit Größe und SHA-256.",
+      "schemas/          JSON-Schemas für Behauptungen, Ledger und Manifest.",
       "evidence/         Aufnahmen, Analysen und Werkzeugergebnisse.",
       "source/           Exportierte Skripte oder dekompilierter Code.",
       "surface/          DOM, Screenshot, Manifest, Ressourcen.",
       "",
-      "Vollständigkeit und Lücken stehen in BLUEPRINT.md, Abschnitt 6; offene Punkte in Abschnitt 9.",
+      "Behauptungen stehen in BLUEPRINT.md, Abschnitt 5-7; Abnahmekriterien in Abschnitt 8, offene Punkte in Abschnitt 9.",
     ].join("\n"),
   );
+
+  for (const schema of ["claims", "ledger", "manifest"]) {
+    ctx.bundle.addData(
+      `schemas/${schema}.schema.json`,
+      await readFile(
+        new URL(`./blueprint/schemas/${schema}.schema.json`, import.meta.url),
+        "utf8",
+      ),
+    );
+  }
+
+  const packageFiles = {};
+  for (const entry of ctx.bundle.entries) {
+    const bytes = bundleEntryBuffer(ctx, entry.name);
+    if (bytes) packageFiles[entry.name] = bytes;
+  }
+  const manifest = buildManifest({
+    files: packageFiles,
+    ceiling: bp.ceiling.ceiling,
+    compiler: COMPILER_ID,
+    analysis_digest: analysisDigest(analysis),
+    produced_at: ctx.generatedAt,
+  });
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+  ctx.bundle.addData("MANIFEST.json", manifestText);
 
   await writeFile(join(ctx.dir, "BLUEPRINT.md"), markdown, "utf8");
   await writeFile(join(ctx.dir, "AGENT-PROMPT.md"), prompt, "utf8");
@@ -3306,6 +3329,18 @@ export async function buildBlueprint(config) {
     JSON.stringify(bp, null, 2),
     "utf8",
   );
+  await writeFile(join(ctx.dir, "MANIFEST.json"), manifestText, "utf8");
+  await mkdir(join(ctx.dir, "schemas"), { recursive: true });
+  for (const schema of ["claims", "ledger", "manifest"]) {
+    await writeFile(
+      join(ctx.dir, `schemas/${schema}.schema.json`),
+      await readFile(
+        new URL(`./blueprint/schemas/${schema}.schema.json`, import.meta.url),
+        "utf8",
+      ),
+      "utf8",
+    );
+  }
 
   progress(
     ctx,
@@ -3329,6 +3364,9 @@ export async function buildBlueprint(config) {
   return {
     ok: true,
     id: ctx.id,
+    blueprintId: bp.id,
+    analysisId: analysis.id,
+    manifest,
     kind: ctx.kind,
     target: target.name,
     createdAt: ctx.generatedAt,

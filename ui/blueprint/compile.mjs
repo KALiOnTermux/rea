@@ -26,7 +26,7 @@ export const COMPILER_NAME = "blueprint-claim-compiler";
 export const COMPILER_VERSION = 1;
 export const COMPILER_ID = `${COMPILER_NAME}@${COMPILER_VERSION}`;
 
-function blueprintFrom(analysis, digest) {
+function blueprintFrom(analysis, digest, claims) {
   const facts = analysis.facts ?? {};
   return {
     schema: "rea.blueprint",
@@ -49,6 +49,7 @@ function blueprintFrom(analysis, digest) {
     reconstruction: facts.reconstruction ?? [],
     acceptance: facts.acceptance ?? [],
     open_questions: facts.open_questions ?? [],
+    claims,
     evidence: analysis.evidence ?? [],
     warnings: analysis.warnings ?? [],
     limits: analysis.limits ?? [],
@@ -71,7 +72,7 @@ export function compile(analysis) {
   const claims = sortClaims(analysis.claims ?? []);
   assertUniqueClaimIds(claims);
 
-  const blueprint = blueprintFrom(analysis, digest);
+  const blueprint = blueprintFrom(analysis, digest, claims);
   const compiled = {
     blueprint,
     claims,

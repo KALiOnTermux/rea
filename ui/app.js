@@ -2866,9 +2866,30 @@ function renderBlueprintResult(data) {
   const gapText = gaps.length
     ? `${gaps.length} Lücken für den Coding-Agenten benannt.`
     : "Keine Lücken im Rahmen der automatischen Prüfung.";
-  $("#blueprintSummary").textContent = coverage
-    ? `Belegt: ${coverage}. ${gapText}`
-    : gapText;
+  const claims = Array.isArray(data.claims) ? data.claims : [];
+  const claimText = claims.length
+    ? `${claims.length} Behauptungen (${["observed", "derived", "assumed"]
+        .map(
+          (kind) =>
+            `${claims.filter((claim) => claim.kind === kind).length} ${kind}`,
+        )
+        .join(", ")}).`
+    : "Keine typisierten Behauptungen im Paket.";
+  const ceilingText = data.ceiling?.ceiling
+    ? `Beweisgrenze: ${data.ceiling.ceiling}${
+        (data.ceiling.downgraded_by || []).length
+          ? ` (herabgesetzt: ${data.ceiling.downgraded_by.join(", ")})`
+          : ""
+      }.`
+    : "";
+  $("#blueprintSummary").textContent = [
+    coverage ? `Belegt: ${coverage}.` : "",
+    claimText,
+    ceilingText,
+    gapText,
+  ]
+    .filter(Boolean)
+    .join(" ");
   renderBlueprintCompleteness(data.completeness);
   $("#blueprintDownload").href = data.downloadUrl || "#";
   $("#blueprintPreview").classList.add("hidden");
