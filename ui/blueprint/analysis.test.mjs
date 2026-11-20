@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { analysisDigest, toAnalysis } from "./analysis.mjs";
+import { compile } from "./compile.mjs";
 import { sortClaims } from "./claims.mjs";
 
 const builtFixture = () => ({
@@ -157,7 +158,7 @@ test("claims separate what was observed, derived and assumed", () => {
   const assumed = analysis.claims.find((claim) => claim.kind === "assumed");
 
   assert.equal(observed.evidence[0].path, "evidence/network.json");
-  assert.equal(observed.ceiling, "executed");
+  assert.equal(observed.ceiling, "statically-evidenced");
   assert.equal(observed.falsifier, "gap:evidence:evidence/network.json");
 
   assert.equal(derived.derivation.rule, "reconstruction.step");
@@ -188,4 +189,111 @@ test("every claim stays within the run ceiling and the ledger accounts for it", 
   for (const claim of analysis.claims) {
     assert.equal(accounted.has(claim.id), true, claim.id);
   }
+});
+
+const interactionFixture = () => {
+  const built = builtFixture();
+  built.surface.buttons = [{ id: "buy", label: "Kaufen" }];
+  built.surface.links = [{ href: "/orders" }];
+  built.behavior = {
+    ...built.behavior,
+    steps: [],
+    navigation: [],
+    events: { retained: 2, dropped: 0, bindings: [], by_kind: [] },
+    console: [],
+    page_errors: [],
+    network: {
+      transactions: 1,
+      failed: 0,
+      by_origin: [],
+      by_resource_type: [],
+      endpoints: [{ name: "POST https://shop.test/api/orders", count: 1 }],
+      contracts: [],
+      requests: built.behavior.network.requests,
+    },
+  };
+  built.internals = {
+    statistics: null,
+    semantic_graph: {
+      nodes: 0,
+      relations: 0,
+      by_kind: [],
+      functions: [],
+      call_sites: [],
+      modules: [],
+      requests: [],
+      relations_by_kind: [],
+    },
+    application_graph: { nodes: 0, edges: 0, by_kind: [], modules: [] },
+    routes: [],
+  };
+  return built;
+};
+
+const interactionCtx = () => ({
+  ...ctxFixture(),
+  evidence: [
+    ...ctxFixture().evidence,
+    {
+      role: "surface",
+      path: "surface/dom.html",
+      bytes: 20,
+      sha256: "b".repeat(64),
+    },
+  ],
+});
+
+test("toAnalysis observes each captured request and interactive DOM node", () => {
+  const analysis = toAnalysis(interactionFixture(), interactionCtx());
+  const request = analysis.claims.find(
+    (claim) => claim.subject === "/behavior/network/requests/0",
+  );
+  assert.equal(request.kind, "observed");
+  assert.deepEqual(request.evidence, [
+    {
+      path: "evidence/web-capture.json",
+      selector: { type: "request", index: 0 },
+    },
+  ]);
+  const button = analysis.claims.find(
+    (claim) => claim.subject === "/surface/buttons/0",
+  );
+  assert.deepEqual(button.evidence, [
+    { path: "surface/dom.html", selector: { type: "dom", path: "#buy" } },
+  ]);
+  const link = analysis.claims.find(
+    (claim) => claim.subject === "/surface/links/0",
+  );
+  assert.deepEqual(link.evidence[0].selector, {
+    type: "dom",
+    path: 'a[href="/orders"]',
+  });
+});
+
+test("the compiled package emits http and dom checks from those observations", () => {
+  const analysis = toAnalysis(interactionFixture(), interactionCtx());
+  const compiled = compile(analysis);
+  const kinds = [
+    ...new Set(compiled.acceptance.checks.map((c) => c.kind)),
+  ].sort();
+  assert.deepEqual(kinds, ["dom", "http", "structure"]);
+  assert.deepEqual(
+    compiled.acceptance.checks
+      .filter((check) => check.kind === "http")
+      .map((check) => check.request.selector.index),
+    [0],
+  );
+});
+
+test("an evidence-file claim never claims more than a static ceiling", () => {
+  const analysis = toAnalysis(builtFixture(), ctxFixture());
+  assert.equal(analysis.ceiling.ceiling, "executed");
+  const file = analysis.claims.find(
+    (claim) => claim.subject === "/evidence/evidence/network.json",
+  );
+  assert.equal(file.ceiling, "statically-evidenced");
+  const request = analysis.claims.find(
+    (claim) => claim.subject === "/behavior/network/requests/0",
+  );
+  assert.equal(request.ceiling, "executed");
 });

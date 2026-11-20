@@ -16,6 +16,18 @@ const ROUTE_SOURCE = "evidence/web-analysis.json";
 const CAPTURE_SOURCE = "evidence/web-capture.json";
 const DOM_SOURCE = "surface/dom.html";
 
+/**
+ * The evidence paths the web classes are enumerated from.
+ *
+ * `toAnalysis` uses the same constants when it turns an enumerated item into an
+ * `observed` claim, so a claim and its ledger entry cannot name different files.
+ */
+export const WEB_EVIDENCE = Object.freeze({
+  analysis: ROUTE_SOURCE,
+  capture: CAPTURE_SOURCE,
+  dom: DOM_SOURCE,
+});
+
 function compareStrings(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -29,6 +41,7 @@ function asArray(value) {
 function routeItems(facts) {
   return asArray(facts?.internals?.routes).map((route, index) => ({
     subject: `${route.method || "GET"} ${route.path || route.pattern || route.route || index}`,
+    pointer: `/routes/${index}`,
     source: {
       path: ROUTE_SOURCE,
       selector: { type: "pointer", pointer: `/routes/${index}` },
@@ -36,46 +49,55 @@ function routeItems(facts) {
   }));
 }
 
-function domItem(subject, selector) {
+/** One DOM item; `pointer` is the claim subject, the selector names the node. */
+function domItem(subject, selector, pointer) {
   return {
     subject,
+    pointer,
     source: { path: DOM_SOURCE, selector: { type: "dom", path: selector } },
   };
 }
 
 function buttonItems(surface) {
-  return asArray(surface.buttons).map((button) =>
+  return asArray(surface.buttons).map((button, index) =>
     domItem(
       button.id
         ? `button#${button.id}`
         : `button:${button.label || button.text || "ohne Text"}`,
       button.id ? `#${button.id}` : `button:${button.label || ""}`,
+      `/surface/buttons/${index}`,
     ),
   );
 }
 
 function inputItems(surface) {
-  return asArray(surface.inputs).map((input) => {
+  return asArray(surface.inputs).map((input, index) => {
     const selector = `${input.tag || "input"}${input.name ? `[name=${input.name}]` : ""}`;
     return domItem(
       `<${input.tag || "input"}>${input.name ? `[name=${input.name}]` : ""}`,
       selector,
+      `/surface/inputs/${index}`,
     );
   });
 }
 
 function formItems(surface) {
-  return asArray(surface.forms).map((form) =>
+  return asArray(surface.forms).map((form, index) =>
     domItem(
       `form:${String(form.method || "get").toLowerCase()} ${form.action || "current"}`,
       `form[action="${form.action || ""}"]`,
+      `/surface/forms/${index}`,
     ),
   );
 }
 
 function linkItems(surface) {
-  return asArray(surface.links).map((link) =>
-    domItem(`link:${link.href || ""}`, `a[href="${link.href || ""}"]`),
+  return asArray(surface.links).map((link, index) =>
+    domItem(
+      `link:${link.href || ""}`,
+      `a[href="${link.href || ""}"]`,
+      `/surface/links/${index}`,
+    ),
   );
 }
 
@@ -92,6 +114,7 @@ function domItems(facts) {
 function requestItems(facts) {
   return asArray(facts?.behavior?.network?.requests).map((request, index) => ({
     subject: `${request.method || "GET"} ${request.url || request.path || index}`,
+    pointer: `/behavior/network/requests/${index}`,
     source: {
       path: CAPTURE_SOURCE,
       selector: { type: "request", index },
@@ -159,6 +182,16 @@ const ENUMERATORS = {
 
 function enumerate(analysis, cls) {
   return ENUMERATORS[cls](analysis?.facts ?? {});
+}
+
+/** Every captured request, in capture order, with its selector. */
+export function webRequestItems(facts) {
+  return requestItems(facts ?? {});
+}
+
+/** Every interactive DOM node the capture recorded, with its selector. */
+export function webDomItems(facts) {
+  return domItems(facts ?? {});
 }
 
 /** Denominators per class, sorted, with the probe that enumerated them. */

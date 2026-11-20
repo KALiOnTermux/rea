@@ -34,11 +34,17 @@ export function matchesSelector(html, selector) {
       `class=["'][^"']*\\b${escapePattern(path.slice(1))}\\b`,
     ).test(source);
   }
-  const attribute = path.match(/^\[([\w-]+)=["']?([^\]"']+)["']?\]$/);
-  if (attribute) {
-    return new RegExp(
-      `${attribute[1]}=["']${escapePattern(attribute[2])}["']`,
-    ).test(source);
+  // `tag[attr="value"]` is what the DOM denominator emits for links, inputs and
+  // forms; without the tag form those checks failed on a node that is present.
+  const tagAttribute = path.match(
+    /^([a-z][\w-]*)?\[([\w-]+)=["']?([^\]"']+)["']?\]$/i,
+  );
+  if (tagAttribute) {
+    const [, tag, attribute, value] = tagAttribute;
+    const pair = `${attribute}=["']${escapePattern(value)}["']`;
+    return tag
+      ? new RegExp(`<${escapePattern(tag)}\\b[^>]*${pair}`).test(source)
+      : new RegExp(pair).test(source);
   }
   return new RegExp(`<${escapePattern(path)}\\b`).test(source);
 }

@@ -297,11 +297,17 @@ export function ledgerViolations(ledger) {
   return violations;
 }
 
-/** Denominators for the classes `toAnalysis` already materialised itself. */
-function ownDenominators(analysis, ownEntries, targetClass) {
-  const classes = [...new Set(ownEntries.map((entry) => entry.class))].sort(
-    compareStrings,
-  );
+/**
+ * Denominators for the classes `toAnalysis` materialised itself.
+ *
+ * Classes the target class enumerates from its facts are skipped: those get the
+ * enumeration's own probe, count and blind spots, and a class may only be
+ * declared once.
+ */
+function ownDenominators(ownEntries, targetClass, enumerated) {
+  const classes = [...new Set(ownEntries.map((entry) => entry.class))]
+    .filter((cls) => !enumerated.has(cls))
+    .sort(compareStrings);
   return classes.map((cls) =>
     denominator({
       class: cls,
@@ -378,9 +384,14 @@ export function ledgerFromAnalysis(analysis) {
     .replace(/[^a-z0-9]+/gi, "-")
     .toLowerCase();
   const omitted = Array.isArray(analysis?.omitted) ? analysis.omitted : [];
+  const enumerated = classDenominators(analysis);
   const denominators = [
-    ...ownDenominators(analysis, ownEntries, targetClass),
-    ...classDenominators(analysis),
+    ...ownDenominators(
+      ownEntries,
+      targetClass,
+      new Set(enumerated.map((item) => item.class)),
+    ),
+    ...enumerated,
   ];
   if (omitted.length > 0) {
     denominators.push(

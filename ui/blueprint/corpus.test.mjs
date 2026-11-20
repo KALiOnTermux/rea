@@ -60,7 +60,8 @@ test("the corpus case reproduces its expected verdict", async () => {
 test("deleting one rebuild file flips the verdict but keeps the classification", async () => {
   const { result, rebuild, acceptance, expected } = await buildCase();
   const domCheck = acceptance.checks.find(
-    (check) => check.fixture === "surface/dom.html",
+    (check) =>
+      check.fixture === "surface/dom.html" && check.kind === "structure",
   );
   assert.equal(Boolean(domCheck), true, "corpus needs a dom.html check");
   assert.equal(

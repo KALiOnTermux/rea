@@ -20,7 +20,7 @@ export PATH="$HOME/.local/node-v24.22.1-linux-x64/bin:$PATH"
 
 **Interfaces:** produces `CLAIM_KINDS`, `CEILINGS`, `claimId`, `makeClaim`, `validateClaim`, `sortClaims`, `ClaimShapeError`.
 
-- [ ] **Step 1: Write the failing test** — `ui/blueprint/claims.test.mjs`
+- [x] **Step 1: Write the failing test** — `ui/blueprint/claims.test.mjs`
 
 ```js
 import assert from "node:assert/strict";
@@ -108,15 +108,15 @@ test("sortClaims orders by id without mutating the input", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 `npx vitest run --project ui-evidence ui/blueprint/claims.test.mjs` → FAIL, `Cannot find module './claims.mjs'`.
 
-- [ ] **Step 3: Implement `ui/blueprint/claims.mjs`** — `claimId` lowercases, replaces every run of non-`[a-z0-9./-]` with `-`, trims `-`; `makeClaim` validates shape and throws `ClaimShapeError` with the field name in the message; `validateClaim` returns violation objects `{ code, subject, detail }` with the codes from `gate.mjs` (`claim.observed.without_evidence`, `claim.derived.without_derivation`, `claim.assumed.without_resolution`, `claim.ceiling.invalid`, `claim.id.duplicate` is checked by the caller).
+- [x] **Step 3: Implement `ui/blueprint/claims.mjs`** — `claimId` lowercases, replaces every run of non-`[a-z0-9./-]` with `-`, trims `-`; `makeClaim` validates shape and throws `ClaimShapeError` with the field name in the message; `validateClaim` returns violation objects `{ code, subject, detail }` with the codes from `gate.mjs` (`claim.observed.without_evidence`, `claim.derived.without_derivation`, `claim.assumed.without_resolution`, `claim.ceiling.invalid`, `claim.id.duplicate` is checked by the caller).
 
-- [ ] **Step 4: Run it green** — `npx vitest run --project ui-evidence ui/blueprint/claims.test.mjs` → 6 passed.
+- [x] **Step 4: Run it green** — `npx vitest run --project ui-evidence ui/blueprint/claims.test.mjs` → 6 passed.
 
-- [ ] **Step 5: Commit** — `feat(blueprint): add typed claim records`
+- [x] **Step 5: Commit** — `feat(blueprint): add typed claim records`
 
 ### Task 2: Ceiling matrix
 
@@ -124,11 +124,11 @@ test("sortClaims orders by id without mutating the input", () => {
 
 **Interfaces:** produces `CLASS_CEILINGS`, `resolveCeiling`, `assertCeilingAllowed`, `CeilingError`.
 
-- [ ] **Step 1: Failing test** — under `apk` with `requested: "executed"` and no probe tagged `execution-grant`, `resolveCeiling` returns `{ ceiling: "statically-evidenced", downgraded_by: ["apk:no-execution-grant"] }`; under `document` with `requested: "executed"`, `assertCeilingAllowed` throws `/not permitted/`; under `web` with a probe tagged `journey-executed`, `requested: "executed"` stays `executed` with `downgraded_by: []`.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — the matrix is exactly spec §4; `downgraded_by` entries are `<class>:<reason>` in fixed order.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): bound assertions by a per-class proof ceiling`
+- [x] **Step 1: Failing test** — under `apk` with `requested: "executed"` and no probe tagged `execution-grant`, `resolveCeiling` returns `{ ceiling: "statically-evidenced", downgraded_by: ["apk:no-execution-grant"] }`; under `document` with `requested: "executed"`, `assertCeilingAllowed` throws `/not permitted/`; under `web` with a probe tagged `journey-executed`, `requested: "executed"` stays `executed` with `downgraded_by: []`.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — the matrix is exactly spec §4; `downgraded_by` entries are `<class>:<reason>` in fixed order.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): bound assertions by a per-class proof ceiling`
 
 ### Task 3: Manifest hash chain
 
@@ -136,26 +136,26 @@ test("sortClaims orders by id without mutating the input", () => {
 
 **Interfaces:** produces `buildManifest`, `verifyManifest`.
 
-- [ ] **Step 1: Failing test** — build a manifest over `{ "a.txt": Buffer.from("a"), "BLUEPRINT.md": Buffer.from("# x") }`; assert `files` sorted by path, `digests.blueprint` equals the sha256 of the markdown, and `produced_at` is present but excluded from `digests`. Then `verifyManifest(manifest, read)` with a reader that returns `Buffer.from("b")` for `a.txt` yields `{ ok: false }` and one violation `manifest.hash_mismatch` naming `a.txt`. A manifest with the file list reordered still verifies.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — sha256 over the raw bytes, hex lowercase, `files: [{ path, sha256, bytes }]`.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): add a tamper-evident package manifest`
+- [x] **Step 1: Failing test** — build a manifest over `{ "a.txt": Buffer.from("a"), "BLUEPRINT.md": Buffer.from("# x") }`; assert `files` sorted by path, `digests.blueprint` equals the sha256 of the markdown, and `produced_at` is present but excluded from `digests`. Then `verifyManifest(manifest, read)` with a reader that returns `Buffer.from("b")` for `a.txt` yields `{ ok: false }` and one violation `manifest.hash_mismatch` naming `a.txt`. A manifest with the file list reordered still verifies.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — sha256 over the raw bytes, hex lowercase, `files: [{ path, sha256, bytes }]`.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): add a tamper-evident package manifest`
 
 ### Task 4: Schemas
 
 **Files:** create `ui/blueprint/schemas/{claims,ledger,manifest}.schema.json`, `ui/blueprint/schemas.test.mjs`
 
-- [ ] **Step 1: Failing test** — load each schema with `Ajv2020` from `ajv/dist/2020.js` (already a dependency, version pinned in `package.json`; `strict: true`, `allErrors: true`), assert `$schema` is `https://json-schema.org/draft/2020-12/schema`, that every required property in the spec table (R2/R5/R10) appears in `required`, and that a `makeClaim` output and a `buildManifest` output validate. Additional cases: a claim with `additionalProperties` is rejected; a manifest digest computed over bytes containing `0x00` and `0xff` validates; a path entry written with `\\` instead of `/` is rejected.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Write the three schemas** with `$id` `https://rea.local/schema/blueprint/<name>.schema.json`, `additionalProperties: false` on claim and ledger entry, and the enum values from `claims.mjs`/`ceiling.mjs` imported by the test rather than duplicated.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): publish claim, ledger and manifest schemas`
+- [x] **Step 1: Failing test** — load each schema with `Ajv2020` from `ajv/dist/2020.js` (already a dependency, version pinned in `package.json`; `strict: true`, `allErrors: true`), assert `$schema` is `https://json-schema.org/draft/2020-12/schema`, that every required property in the spec table (R2/R5/R10) appears in `required`, and that a `makeClaim` output and a `buildManifest` output validate. Additional cases: a claim with `additionalProperties` is rejected; a manifest digest computed over bytes containing `0x00` and `0xff` validates; a path entry written with `\\` instead of `/` is rejected.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Write the three schemas** with `$id` `https://rea.local/schema/blueprint/<name>.schema.json`, `additionalProperties: false` on claim and ledger entry, and the enum values from `claims.mjs`/`ceiling.mjs` imported by the test rather than duplicated.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): publish claim, ledger and manifest schemas`
 
 ### Stage 1 gate
 
-- [ ] `npx vitest run --project ui-evidence` → all pass, including the untouched `ui/blueprint-evidence.test.mjs`.
-- [ ] `npm run check:fast` → exit 0.
+- [x] `npx vitest run --project ui-evidence` → all pass, including the untouched `ui/blueprint-evidence.test.mjs`.
+- [x] `npm run check:fast` → exit 0.
 
 ## Stage 2 — Render from claims, deterministically
 
@@ -165,11 +165,11 @@ test("sortClaims orders by id without mutating the input", () => {
 
 **Interfaces:** produces `analysisDigest`, `toAnalysis`; consumes nothing from earlier stages except constants.
 
-- [ ] **Step 1: Failing test** — `toAnalysis(built, ctx)` over a hand-built `built` object (`{ target: { name, kind, input }, surface: { headings: [..] }, behavior: { network: { requests: [..] } }, internals: {}, evidence: [{ path, sha256 }] }`) keeps all facts reachable at their original paths, sets `ceiling` from `resolveCeiling`, and produces an `analysisDigest` that is unchanged when object keys are reordered and changes when one fact changes.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — canonical JSON (sorted keys, no whitespace) then sha256.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): record the analysis as plain data`
+- [x] **Step 1: Failing test** — `toAnalysis(built, ctx)` over a hand-built `built` object (`{ target: { name, kind, input }, surface: { headings: [..] }, behavior: { network: { requests: [..] } }, internals: {}, evidence: [{ path, sha256 }] }`) keeps all facts reachable at their original paths, sets `ceiling` from `resolveCeiling`, and produces an `analysisDigest` that is unchanged when object keys are reordered and changes when one fact changes.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — canonical JSON (sorted keys, no whitespace) then sha256.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): record the analysis as plain data`
 
 ### Task 6: Markdown from claims
 
@@ -177,11 +177,11 @@ test("sortClaims orders by id without mutating the input", () => {
 
 **Interfaces:** produces `renderMarkdown(compiled)`, `renderPrompt(compiled)`, `renderClaimsSection(claims)`; consumes `sortClaims`.
 
-- [ ] **Step 1: Failing test** — with one claim of each kind, `renderMarkdown` contains the three headings `## 5. Beobachtet (observed)`, `## 6. Abgeleitet (derived)`, `## 7. Angenommen (assumed)`; each claim id appears exactly once; every id outside its own kind's section is absent; `## 10. Beweise im Paket` lists `evidence path` and `falsifier` per claim. A claim of kind `derived` must not appear under `## 5.`.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — the existing German section order from today's `renderMarkdown` is preserved (1 Auftrag, 2 Ziel, 3 Oberfläche, 4 Verhalten, 5–7 claim kinds, 8 Abnahmekriterien, 9 Offene Punkte, 10 Beweise); prose is copied from the current function, only the claim sections are new.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): render sections from typed claims`
+- [x] **Step 1: Failing test** — with one claim of each kind, `renderMarkdown` contains the three headings `## 5. Beobachtet (observed)`, `## 6. Abgeleitet (derived)`, `## 7. Angenommen (assumed)`; each claim id appears exactly once; every id outside its own kind's section is absent; `## 10. Beweise im Paket` lists `evidence path` and `falsifier` per claim. A claim of kind `derived` must not appear under `## 5.`.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — the existing German section order from today's `renderMarkdown` is preserved (1 Auftrag, 2 Ziel, 3 Oberfläche, 4 Verhalten, 5–7 claim kinds, 8 Abnahmekriterien, 9 Offene Punkte, 10 Beweise); prose is copied from the current function, only the claim sections are new.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): render sections from typed claims`
 
 ### Task 7: Purity
 
@@ -189,7 +189,7 @@ test("sortClaims orders by id without mutating the input", () => {
 
 **Interfaces:** produces `compile(analysis)` returning `{ blueprint, claims, ledger, acceptance, manifest, markdown, prompt, outputDigest }`.
 
-- [ ] **Step 1: Failing test** — call `compile` twice on the same `Analysis`; assert `JSON.stringify` of every field is equal and `outputDigest` matches. Then stub the impure globals and assert `compile` does not touch them:
+- [x] **Step 1: Failing test** — call `compile` twice on the same `Analysis`; assert `JSON.stringify` of every field is equal and `outputDigest` matches. Then stub the impure globals and assert `compile` does not touch them:
 
 ```js
 const realNow = Date.now;
@@ -208,24 +208,24 @@ try {
 }
 ```
 
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** `compile` — it assembles `blueprint` with `schema_version: 2`, `id: "bp-" + analysisDigest.slice(0, 16)`, no `generated_at`, and calls `renderMarkdown`, `buildAcceptance`, `buildLedger`, `buildManifest` in that order.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): compile a package purely from the analysis`
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** `compile` — it assembles `blueprint` with `schema_version: 2`, `id: "bp-" + analysisDigest.slice(0, 16)`, no `generated_at`, and calls `renderMarkdown`, `buildAcceptance`, `buildLedger`, `buildManifest` in that order.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): compile a package purely from the analysis`
 
 ### Task 8: Wire `buildBlueprint` to the compiler
 
 **Files:** modify `ui/blueprint.mjs` (`buildBlueprint`, delete the old `renderMarkdown`/`renderAgentPrompt` bodies), `ui/app.js` (coverage/violations read), `ui/blueprint-build.test.mjs` (new)
 
-- [ ] **Step 1: Failing test** — `buildBlueprint` over the existing web fixture writes `blueprint.json` with `schema_version: 2`, an `id` matching `/^bp-[0-9a-f]{16}$/`, no `generated_at`, and a `MANIFEST.json` whose `produced_at` is an ISO string; two runs into different `artifactsDir`s produce byte-identical `blueprint.json` and `BLUEPRINT.md`. A fixture whose `Bundle#omitted` list is non-empty yields one `bundle.entry.omitted` violation naming the omitted path.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — `buildBlueprint` = `createContext` → existing builder → `toAnalysis` → `compile` → `gate` (task 11) or, until task 11 lands, `compile` only; keep writing the same file names.
-- [ ] **Step 4: Green**, and `ui/blueprint-evidence.test.mjs` still passes.
-- [ ] **Step 5: Commit** — `refactor(blueprint): build the package through the pure compiler`
+- [x] **Step 1: Failing test** — `buildBlueprint` over the existing web fixture writes `blueprint.json` with `schema_version: 2`, an `id` matching `/^bp-[0-9a-f]{16}$/`, no `generated_at`, and a `MANIFEST.json` whose `produced_at` is an ISO string; two runs into different `artifactsDir`s produce byte-identical `blueprint.json` and `BLUEPRINT.md`. A fixture whose `Bundle#omitted` list is non-empty yields one `bundle.entry.omitted` violation naming the omitted path.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — `buildBlueprint` = `createContext` → existing builder → `toAnalysis` → `compile` → `gate` (task 11) or, until task 11 lands, `compile` only; keep writing the same file names.
+- [x] **Step 4: Green**, and `ui/blueprint-evidence.test.mjs` still passes.
+- [x] **Step 5: Commit** — `refactor(blueprint): build the package through the pure compiler`
 
 ### Stage 2 gate
 
-- [ ] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
+- [x] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
 
 ## Stage 3 — Closure ledger and the fail-closed gate
 

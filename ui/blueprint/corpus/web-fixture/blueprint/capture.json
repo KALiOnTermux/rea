@@ -1,7 +1,9 @@
 {
   "url": "https://shop.test/",
   "final_url": "https://shop.test/",
-  "completeness": { "status": "complete" },
+  "completeness": {
+    "status": "complete"
+  },
   "steps": [
     {
       "action": "goto",
@@ -19,18 +21,30 @@
     }
   ],
   "events": {
+    "retained": 2,
+    "dropped": 0,
     "items": [
       {
         "kind": "request",
         "transaction_id": "t1",
+        "sequence": 1,
         "method": "GET",
-        "url": "https://shop.test/api/orders",
+        "url": {
+          "url": "https://shop.test/api/orders",
+          "origin": "https://shop.test"
+        },
         "resource_type": "fetch"
       },
       {
         "kind": "response",
         "transaction_id": "t1",
-        "status": 200
+        "sequence": 2,
+        "status": 200,
+        "url": {
+          "url": "https://shop.test/api/orders",
+          "origin": "https://shop.test"
+        },
+        "resource_type": "fetch"
       }
     ]
   }
