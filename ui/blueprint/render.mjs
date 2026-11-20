@@ -765,16 +765,22 @@ export function renderMarkdown(compiled) {
       }
     });
   } else {
-    const s = bp.surface;
-    const i = bp.internals;
+    // A source tree shares this branch with a native binary. Its facts carry no
+    // native-only fields, so every list is read through `list()` and a missing
+    // value prints as "nicht belegt" instead of crashing the renderer.
+    const s = bp.surface ?? {};
+    const i = bp.internals ?? {};
+    const behavior = bp.behavior ?? {};
+    const pseudocode = i.pseudocode ?? {};
+    const list = (value) => (Array.isArray(value) ? value : []);
     section("3. Oberfläche und Ziel", () => {
       add(`- **Format:** ${s.format || "unbekannt"}`);
       add(`- **Architektur:** ${s.architecture || "unbekannt"}`);
       add(`- **Bits:** ${s.bits ?? "unbekannt"}`);
       add(`- **Byte-Reihenfolge:** ${s.byte_order || "unbekannt"}`);
-      add(`- **Segmente:** ${s.segments}`);
-      add(`- **Prozeduren:** ${s.procedures}`);
-      add(`- **Strings:** ${s.strings}`);
+      add(`- **Segmente:** ${s.segments ?? "nicht belegt"}`);
+      add(`- **Prozeduren:** ${s.procedures ?? "nicht belegt"}`);
+      add(`- **Strings:** ${s.strings ?? "nicht belegt"}`);
     });
     section("4. Verhalten", () => {
       add(
@@ -783,17 +789,17 @@ export function renderMarkdown(compiled) {
           "nicht erstellt; die belegten Pfade tragen Datei- bzw. Offset-Adressen.",
       );
       add("");
-      if (bp.behavior.exports.length > 0) {
+      if (list(behavior.exports).length > 0) {
         add("### Exporte");
         add("");
-        for (const name of bp.behavior.exports.slice(0, 80))
+        for (const name of list(behavior.exports).slice(0, 80))
           bullet(`\`${name}\``);
       }
-      if (bp.behavior.hardening.length > 0) {
+      if (list(behavior.hardening).length > 0) {
         add("");
         add("### Schutzmerkmale");
         add("");
-        for (const row of bp.behavior.hardening) {
+        for (const row of list(behavior.hardening)) {
           bullet(
             `${row.property}: ${row.state}${row.basis ? ` (${row.basis})` : ""}`,
           );
@@ -802,15 +808,15 @@ export function renderMarkdown(compiled) {
       add("");
       add("### Ein-/Ausgaben und Exit-Codes");
       add("");
-      add(`- **Usage:** ${bp.behavior.cli?.usage || "nicht belegt"}`);
-      add(`- **Hilfe:** ${bp.behavior.cli?.help || "nicht belegt"}`);
-      for (const row of (bp.behavior.exit_contract || []).slice(0, 20)) {
+      add(`- **Usage:** ${behavior.cli?.usage || "nicht belegt"}`);
+      add(`- **Hilfe:** ${behavior.cli?.help || "nicht belegt"}`);
+      for (const row of list(behavior.exit_contract).slice(0, 20)) {
         bullet(`${row.message} — \`${row.source}\``);
       }
       add("");
       add("### Fehler- und Exit-Pfade");
       add("");
-      for (const error of (bp.behavior.error_paths || []).slice(0, 80)) {
+      for (const error of list(behavior.error_paths).slice(0, 80)) {
         bullet(
           error.kind === "call"
             ? `${error.call} in ${error.function || "?"} — \`${error.source}\``
@@ -820,28 +826,28 @@ export function renderMarkdown(compiled) {
     });
     part("Innenleben", () => {
       add(
-        `- **Pseudocode:** ${i.pseudocode.files} Datei(en), ${i.pseudocode.bytes} Bytes`,
+        `- **Pseudocode:** ${pseudocode.files ?? 0} Datei(en), ${pseudocode.bytes ?? 0} Bytes`,
       );
       add(
-        `- **Pseudocode:** ${i.pseudocode.written} interne Funktionen` +
-          `${i.pseudocode.external ? ` + ${i.pseudocode.external} externe Importe ohne Body` : ""}` +
-          ` von ${i.pseudocode.selected} ausgewählten` +
-          `${i.pseudocode.remaining ? `, ${i.pseudocode.remaining} offen` : ""}`,
+        `- **Pseudocode:** ${pseudocode.written ?? 0} interne Funktionen` +
+          `${pseudocode.external ? ` + ${pseudocode.external} externe Importe ohne Body` : ""}` +
+          ` von ${pseudocode.selected ?? 0} ausgewählten` +
+          `${pseudocode.remaining ? `, ${pseudocode.remaining} offen` : ""}`,
       );
       add(
         `- **Disassembly:** ${i.disassembly?.calls || 0} Fehler-/Exit-Aufrufe, ${i.disassembly?.messages || 0} .rodata-Meldungen, ${i.disassembly?.error_paths || 0} belegte Pfade`,
       );
       add("");
-      if (i.pseudocode.sample.length > 0) {
+      if (list(pseudocode.sample).length > 0) {
         add("### Funktionsauszug");
         add("");
-        for (const name of i.pseudocode.sample) bullet(`\`${name}\``);
+        for (const name of list(pseudocode.sample)) bullet(`\`${name}\``);
       }
-      if (i.observations.length > 0) {
+      if (list(i.observations).length > 0) {
         add("");
         add("### Beobachtungen");
         add("");
-        for (const observation of i.observations.slice(0, 40))
+        for (const observation of list(i.observations).slice(0, 40))
           bullet(observation);
       }
     });
@@ -849,9 +855,9 @@ export function renderMarkdown(compiled) {
       add(
         "Die statisch belegten Abhängigkeiten stehen in `evidence/` und in den Exporten.",
       );
-      if (bp.dependencies.length > 0) {
+      if (list(bp.dependencies).length > 0) {
         add("");
-        for (const item of bp.dependencies) bullet(item);
+        for (const item of list(bp.dependencies)) bullet(item);
       } else {
         add("Es wurden keine zusätzlichen Laufzeitabhängigkeiten erkannt.");
       }

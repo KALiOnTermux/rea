@@ -15,6 +15,7 @@
  */
 
 import { CEILING_ORDER } from "./ceiling.mjs";
+import { sourceDenominators, sourceEntries } from "./denominators/source.mjs";
 import { webDenominators, webEntries } from "./denominators/web.mjs";
 
 export const LEDGER_SCHEMA = "rea.blueprint.ledger";
@@ -323,9 +324,16 @@ export function ledgerFromAnalysis(analysis) {
     }),
   );
   const entries = [...ownEntries];
-  if (analysis?.target?.kind === "web") {
+  const kind = analysis?.target?.kind;
+  if (kind === "web") {
     denominators.push(...webDenominators(analysis));
     entries.push(...webEntries(analysis, claims));
+  }
+  // A source run enumerates symbols, routes and exit paths from its own facts, so
+  // a code package declares the same kind of denominator a web run does.
+  if (kind === "code") {
+    denominators.push(...sourceDenominators(analysis));
+    entries.push(...sourceEntries(analysis, claims));
   }
   // Files the bundle caps dropped (spec §6): a truncated source or evidence tree
   // must not let the package look closed, so each omission is a blocking gap.
