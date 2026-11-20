@@ -366,15 +366,17 @@ function checkManifest({ manifest, ctx, violations }) {
   }
 }
 
-/** Gate over one compiled package. Any undecidable support is a violation. */
-export function gate({
-  blueprint,
-  claims = [],
-  ledger = null,
-  acceptance = null,
-  manifest = null,
-  ctx = {},
-} = {}) {
+/**
+ * Gate over one compiled package (spec §8: `gate(bp, ledger, acceptance, ctx)`).
+ *
+ * The claims come from the IR itself and the manifest travels in `ctx`, so the
+ * signature stays the one the spec declares. Any undecidable support is a
+ * violation.
+ */
+export function gate(bp, ledger = null, acceptance = null, ctx = {}) {
+  const blueprint = bp;
+  const claims = asArray(bp?.claims);
+  const manifest = ctx?.manifest ?? null;
   const violations = [];
   checkClaims({ claims, blueprint, ledger, acceptance, ctx, violations });
   checkLedger({ ledger, claims, violations });

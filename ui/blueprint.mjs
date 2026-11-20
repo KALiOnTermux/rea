@@ -3296,24 +3296,18 @@ export async function buildBlueprint(config) {
     "BLUEPRINT.md": compiled.markdown,
     "AGENT-PROMPT.md": compiled.prompt,
   });
-  const firstGate = gate({
-    blueprint: bp,
-    claims: compiled.claims,
-    ledger,
-    acceptance: compiled.acceptance,
-    ctx: {
-      targetClass: ctx.kind,
-      files: [
-        ...ctx.bundle.entries.map((entry) => entry.name),
-        "BLUEPRINT.md",
-        "AGENT-PROMPT.md",
-        "blueprint.json",
-        "ledger.json",
-        "MANIFEST.json",
-        "README.txt",
-      ],
-      omitted: [...(ctx.bundle.omitted ?? [])],
-    },
+  const firstGate = gate(bp, ledger, compiled.acceptance, {
+    targetClass: ctx.kind,
+    files: [
+      ...ctx.bundle.entries.map((entry) => entry.name),
+      "BLUEPRINT.md",
+      "AGENT-PROMPT.md",
+      "blueprint.json",
+      "ledger.json",
+      "MANIFEST.json",
+      "README.txt",
+    ],
+    omitted: [...(ctx.bundle.omitted ?? [])],
   });
   bp.completeness = projectCompleteness(probe, firstGate);
   bp.coverage.status = coverageStatus(firstGate);
@@ -3397,24 +3391,16 @@ export async function buildBlueprint(config) {
   // the documents that were just assembled. Both are structurally satisfied
   // here, so a difference means the pipeline is inconsistent and the package is
   // refused instead of being written with a contradiction.
-  const secondGate = gate({
-    blueprint: bp,
-    claims: compiled.claims,
-    ledger,
-    acceptance: compiled.acceptance,
+  const secondGate = gate(bp, ledger, compiled.acceptance, {
+    targetClass: ctx.kind,
+    files: [...Object.keys(packageFiles), "MANIFEST.json"],
+    omitted: [...(ctx.bundle.omitted ?? [])],
     manifest,
-    ctx: {
-      targetClass: ctx.kind,
-      files: [...Object.keys(packageFiles), "MANIFEST.json"],
-      omitted: [...(ctx.bundle.omitted ?? [])],
-      markdown,
-      renderMarkdown: () =>
-        renderMarkdown({ blueprint: bp, claims: compiled.claims }),
-      readFile: (path) =>
-        path === "MANIFEST.json"
-          ? Buffer.from(manifestText)
-          : packageFiles[path],
-    },
+    markdown,
+    renderMarkdown: () =>
+      renderMarkdown({ blueprint: bp, claims: compiled.claims }),
+    readFile: (path) =>
+      path === "MANIFEST.json" ? Buffer.from(manifestText) : packageFiles[path],
   });
   if (
     JSON.stringify(secondGate.violations) !==

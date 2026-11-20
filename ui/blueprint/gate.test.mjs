@@ -132,6 +132,12 @@ function base() {
   };
 }
 
+const run = (pkg) =>
+  gate(pkg.blueprint, pkg.ledger, pkg.acceptance, {
+    ...pkg.ctx,
+    manifest: pkg.manifest,
+  });
+
 /** Adds a claim and books it on the given ledger entry, so only its defect shows. */
 function addClaim(pkg, claim, entryId = pkg.ledger.entries[0].id) {
   pkg.claims.push(claim);
@@ -333,7 +339,7 @@ const ROWS = [
 ];
 
 test("a closed package passes the gate", () => {
-  const result = gate(base());
+  const result = run(base());
   assert.deepEqual(result.violations, []);
   assert.equal(result.ok, true);
   assert.equal(result.status, "complete");
@@ -349,7 +355,7 @@ test("every violation code is declared", () => {
 for (const row of ROWS) {
   test(`the gate reports ${row.code}`, () => {
     const pkg = row.mutate(base());
-    const result = gate(pkg);
+    const result = run(pkg);
     assert.equal(result.ok, false);
     assert.notEqual(result.status, "complete");
     assert.deepEqual(
@@ -368,7 +374,7 @@ test("an incomplete package without allowIncomplete throws a gate error", () => 
   pkg.blueprint.acceptance = ["Kriterium A", "Kriterium B"];
   assert.throws(
     () => {
-      const result = gate(pkg);
+      const result = run(pkg);
       if (!result.ok) throw new BlueprintGateError(result);
     },
     (error) => {
