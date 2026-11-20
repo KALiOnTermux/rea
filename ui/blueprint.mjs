@@ -1704,6 +1704,58 @@ function accessibilityOutline(html, dom) {
   return lines.join("\n");
 }
 
+/**
+ * What a capture actually contains, so "not producible" is a checked statement
+ * and not an assumption.
+ *
+ * A part is only declared a limit when the capture really lacks the raw material:
+ * no script body or source text means no static analysis, no screenshot artifact
+ * means no image. The keys are recorded verbatim so a reader can re-check them.
+ */
+function captureMaterial(capture, artifacts) {
+  const items = Array.isArray(capture?.events?.items)
+    ? capture.events.items
+    : [];
+  const eventKeys = [
+    ...new Set(items.flatMap((item) => Object.keys(item ?? {}))),
+  ].sort();
+  const has = (artifact) => Boolean(artifactValue(artifacts, artifact));
+  const scriptSources = [];
+  const walk = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    for (const [key, item] of Object.entries(value)) {
+      if (
+        typeof item === "string" &&
+        /^(body|content|source|text)$/i.test(key) &&
+        /(?:function|=>|var |let |const |class )/.test(item)
+      ) {
+        scriptSources.push(key);
+      }
+      walk(item);
+    }
+  };
+  walk(capture);
+  return {
+    capture_keys: Object.keys(capture ?? {}).sort(),
+    step_artifacts: [
+      ...new Set(
+        (Array.isArray(capture?.steps) ? capture.steps : []).flatMap((step) =>
+          Object.keys(step?.artifacts ?? {}),
+        ),
+      ),
+    ].sort(),
+    event_keys: eventKeys,
+    script_body_keys: [...new Set(scriptSources)].sort(),
+    screenshot: has("screenshot"),
+    accessibility: has("accessibility"),
+    storage: has("storage"),
+  };
+}
+
 function progress(ctx, stage, label, detail, percent) {
   ctx.onProgress({ stage, label, detail, percent });
 }
@@ -2799,6 +2851,41 @@ async function buildWeb(ctx) {
     );
   }
 
+  const material = captureMaterial(capture, artifacts);
+  ctx.evidenceLimits = [];
+  if (
+    !material.script_body_keys.length &&
+    !(input.web?.scripts && existsSync(input.web.scripts))
+  ) {
+    ctx.evidenceLimits.push({
+      path: "evidence/web-analysis.json",
+      why: "Die Aufnahme enthält keinen Skript- oder Quelltext (keine Body-/Content-/Source-Felder mit JavaScript), daher ist keine statische Analyse erzeugbar.",
+      missing: ["Skript-Body oder Quelltext in events.items/artifacts"],
+      observed: {
+        capture_keys: material.capture_keys,
+        step_artifacts: material.step_artifacts,
+        event_keys: material.event_keys,
+      },
+    });
+    ctx.evidenceLimits.push({
+      path: "evidence/source-analysis.json",
+      why: "Ohne Skript- oder Quelltext ist auch die Quellanalyse (Routen, Funktionen, Aufrufe) nicht erzeugbar.",
+      missing: ["source/web/**", "Skript-Body"],
+      observed: {
+        capture_keys: material.capture_keys,
+        step_artifacts: material.step_artifacts,
+      },
+    });
+  }
+  if (!material.screenshot) {
+    ctx.evidenceLimits.push({
+      path: "surface/screenshot.png",
+      why: "Die Aufnahme enthält kein Screenshot-Artefakt; ohne Pixel ist kein Bild erzeugbar.",
+      missing: ["steps[*].artifacts.screenshot"],
+      observed: { step_artifacts: material.step_artifacts },
+    });
+  }
+
   const network = networkFromEvents(events);
   const sourceRoot = input.web?.source || input.web?.scripts || null;
   const sourceAnalysis = sourceRoot
@@ -3447,6 +3534,7 @@ export async function buildBlueprint(config) {
     );
   analysis.target = target;
   analysis.omitted = [...(ctx.bundle.omitted ?? [])];
+  analysis.evidence_limits = [...(ctx.evidenceLimits ?? [])];
   analysis.bundle = {
     files: ctx.bundle.entries.length + 8,
     bytes_raw: ctx.bundle.rawBytes,

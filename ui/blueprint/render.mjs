@@ -1047,6 +1047,26 @@ export function renderMarkdown(compiled) {
       add("");
       for (const limit of bp.limits) bullet(limit);
     }
+    const evidenceLimits = bp.evidence_limits ?? [];
+    if (evidenceLimits.length > 0) {
+      add("");
+      add("### Nicht erzeugbare Belege (geprüft an der Aufnahme)");
+      add("");
+      add(
+        "| Beleg | Warum nicht erzeugbar | Fehlt in der Aufnahme | Vorhandene Schlüssel |",
+      );
+      add("| --- | --- | --- | --- |");
+      for (const limit of evidenceLimits) {
+        const observed = Object.entries(limit.observed ?? {})
+          .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+          .join(", ");
+        // Plain text, not a code span: this path is deliberately not part of the
+        // package, and a package reference has to resolve.
+        add(
+          `| ${cell(limit.path)} (nicht im Paket) | ${cell(limit.why)} | ${cell((limit.missing ?? []).join(", "))} | ${cell(observed)} |`,
+        );
+      }
+    }
     add("");
     part("Behauptungen und ihre Belege", () => {
       add("| Behauptung | Art | Ceiling | Beleg | Falsifier |");

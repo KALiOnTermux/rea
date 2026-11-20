@@ -58,6 +58,7 @@ function blueprintFrom(analysis, digest, claims) {
     evidence: analysis.evidence ?? [],
     warnings: analysis.warnings ?? [],
     limits: analysis.limits ?? [],
+    evidence_limits: analysis.evidence_limits ?? [],
     bundle: analysis.bundle ?? {
       files: 0,
       bytes_raw: 0,
