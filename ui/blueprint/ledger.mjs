@@ -15,6 +15,7 @@
  */
 
 import { CEILING_ORDER } from "./ceiling.mjs";
+import { nativeDenominators, nativeEntries } from "./denominators/native.mjs";
 import { sourceDenominators, sourceEntries } from "./denominators/source.mjs";
 import { webDenominators, webEntries } from "./denominators/web.mjs";
 
@@ -296,24 +297,12 @@ export function ledgerViolations(ledger) {
   return violations;
 }
 
-/**
- * Ledger over everything an analysis makes assertable.
- *
- * The entries `toAnalysis` already materialised (`evidence:<path>`, `step:<n>`,
- * `open-question:<id>`) keep their ids unchanged, so every `gap:` falsifier a
- * stage-2 claim carries resolves here. For a web target the enumerated route,
- * DOM, request and asset items are added as their own classes.
- */
-export function ledgerFromAnalysis(analysis) {
-  const ownEntries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
-  const claims = Array.isArray(analysis?.claims) ? analysis.claims : [];
+/** Denominators for the classes `toAnalysis` already materialised itself. */
+function ownDenominators(analysis, ownEntries, targetClass) {
   const classes = [...new Set(ownEntries.map((entry) => entry.class))].sort(
     compareStrings,
   );
-  const targetClass = String(analysis?.target?.kind ?? "target")
-    .replace(/[^a-z0-9]+/gi, "-")
-    .toLowerCase();
-  const denominators = classes.map((cls) =>
+  return classes.map((cls) =>
     denominator({
       class: cls,
       probe: `${targetClass}.${cls}-scan`,
@@ -323,21 +312,76 @@ export function ledgerFromAnalysis(analysis) {
       ],
     }),
   );
-  const entries = [...ownEntries];
+}
+
+/**
+ * Denominator classes a target class enumerates from its own facts.
+ *
+ * A native binary is not a source tree: it has no resolved functions, routes or
+ * exit paths, so the source classes would only ever report empty denominators.
+ */
+function classDenominators(analysis) {
   const kind = analysis?.target?.kind;
-  if (kind === "web") {
-    denominators.push(...webDenominators(analysis));
-    entries.push(...webEntries(analysis, claims));
+  if (kind === "web") return webDenominators(analysis);
+  if (kind === "code" && analysis?.target?.platform !== "native") {
+    return sourceDenominators(analysis);
   }
-  // A source run enumerates symbols, routes and exit paths from its own facts, so
-  // a code package declares the same kind of denominator a web run does.
-  if (kind === "code") {
-    denominators.push(...sourceDenominators(analysis));
-    entries.push(...sourceEntries(analysis, claims));
+  if (kind === "apk") return nativeDenominators(analysis);
+  return [];
+}
+
+/** The ledger entries matching `classDenominators`, each covered or a gap. */
+function classEntries(analysis, claims) {
+  const kind = analysis?.target?.kind;
+  if (kind === "web") return webEntries(analysis, claims);
+  if (kind === "code" && analysis?.target?.platform !== "native") {
+    return sourceEntries(analysis, claims);
   }
-  // Files the bundle caps dropped (spec §6): a truncated source or evidence tree
-  // must not let the package look closed, so each omission is a blocking gap.
+  if (kind === "apk") return nativeEntries(analysis, claims);
+  return [];
+}
+
+/**
+ * Files the bundle caps dropped (spec §6): a truncated source or evidence tree
+ * must not let the package look closed, so each omission is a blocking gap.
+ */
+function omissionEntries(omitted) {
+  return omitted.map((path) => ({
+    id: `bundle:${path}`,
+    class: "bundle",
+    subject: path,
+    status: "gap",
+    claims: [],
+    gap: {
+      id: `bundle:${path}`,
+      why: `Das Paket lässt ${path} aus, weil ein Bundle-Cap gegriffen hat.`,
+      action:
+        "Bundle-Cap anheben oder die Quelle verkleinern und die Blaupause neu erzeugen.",
+      blocking: true,
+    },
+  }));
+}
+
+/**
+ * Ledger over everything an analysis makes assertable.
+ *
+ * The entries `toAnalysis` already materialised (`evidence:<path>`, `step:<n>`,
+ * `open-question:<id>`) keep their ids unchanged, so every `gap:` falsifier a
+ * stage-2 claim carries resolves here. Each target class then adds the items it
+ * enumerates itself: routes and DOM for web, symbols and exit paths for source,
+ * screens and assets for an APK.
+ */
+export function ledgerFromAnalysis(analysis) {
+  const ownEntries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
+  const claims = Array.isArray(analysis?.claims) ? analysis.claims : [];
+  const targetClass = String(analysis?.target?.kind ?? "target")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .toLowerCase();
   const omitted = Array.isArray(analysis?.omitted) ? analysis.omitted : [];
+  const denominators = [
+    ...ownDenominators(analysis, ownEntries, targetClass),
+    ...classDenominators(analysis),
+  ];
   if (omitted.length > 0) {
     denominators.push(
       denominator({
@@ -349,26 +393,14 @@ export function ledgerFromAnalysis(analysis) {
         ],
       }),
     );
-    for (const path of omitted) {
-      entries.push({
-        id: `bundle:${path}`,
-        class: "bundle",
-        subject: path,
-        status: "gap",
-        claims: [],
-        gap: {
-          id: `bundle:${path}`,
-          why: `Das Paket lässt ${path} aus, weil ein Bundle-Cap gegriffen hat.`,
-          action:
-            "Bundle-Cap anheben oder die Quelle verkleinern und die Blaupause neu erzeugen.",
-          blocking: true,
-        },
-      });
-    }
   }
   return buildLedger({
     ceiling: analysis?.ceiling?.ceiling ?? "inferred-only",
     denominators,
-    entries,
+    entries: [
+      ...ownEntries,
+      ...classEntries(analysis, claims),
+      ...omissionEntries(omitted),
+    ],
   });
 }

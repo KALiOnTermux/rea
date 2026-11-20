@@ -3192,6 +3192,15 @@ async function fileTarget(ctx) {
  * capture with steps supports `executed`; everything else stays statically
  * evidenced and `resolveCeiling` records the missing grant.
  */
+/**
+ * A native binary without a trace probe may only claim `inferred-only` (spec §4,
+ * Task 20): nothing observed its behaviour, so the run does not ask for more and
+ * every claim in the package carries that ceiling.
+ */
+function nativeRequestedCeiling(built) {
+  return built?.target?.platform === "native" ? "inferred-only" : undefined;
+}
+
 function probesFor(kind, built) {
   const tags = [];
   if (kind === "web" && (built?.behavior?.steps?.length ?? 0) > 0) {
@@ -3270,7 +3279,7 @@ export async function buildBlueprint(config) {
     limits: ctx.limits,
     openQuestions: ctx.openQuestions,
     producedAt: ctx.generatedAt,
-    requestedCeiling: config.requestedCeiling,
+    requestedCeiling: config.requestedCeiling ?? nativeRequestedCeiling(built),
     generator: { name: "REA Studio", command: config.reaVersion || "rea" },
   });
   analysis.source_included = ctx.includeSources;
