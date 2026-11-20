@@ -235,11 +235,11 @@ try {
 
 **Interfaces:** produces `denominator`, `buildLedger`, `closure`, `ledgerFromAnalysis`, `LedgerError`.
 
-- [ ] **Step 1: Failing test** — a denominator of 3 routes with 2 covered and 1 gap yields `closure` `{ covered: 2, gap: 1, out_of_scope: 0, ratio: 0.6667 }`; a fourth entry not in the denominator throws `LedgerError /denominator/`; a missing entry throws `/unaccounted/`; 2 `out_of_scope` entries over a denominator of 3 throw `/out_of_scope/`; duplicate `class+subject` entries merge their `claims` arrays; every denominator with `items: 0` produces the violation `ledger.denominator.empty` and `closure.ratio` stays `0` (no `NaN`).
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — ids are `${class}:${subject}`; ratio rounded to 4 decimals; `blind_spots` copied to the ledger verbatim.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): add the closure ledger with a fixed denominator`
+- [x] **Step 1: Failing test** — a denominator of 3 routes with 2 covered and 1 gap yields `closure` `{ covered: 2, gap: 1, out_of_scope: 0, ratio: 0.6667 }`; a fourth entry not in the denominator throws `LedgerError /denominator/`; a missing entry throws `/unaccounted/`; 2 `out_of_scope` entries over a denominator of 3 throw `/out_of_scope/`; duplicate `class+subject` entries merge their `claims` arrays; every denominator with `items: 0` produces the violation `ledger.denominator.empty` and `closure.ratio` stays `0` (no `NaN`).
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — ids are `${class}:${subject}`; ratio rounded to 4 decimals; `blind_spots` copied to the ledger verbatim.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): add the closure ledger with a fixed denominator`
 
 ### Task 10: Web denominators
 
@@ -247,11 +247,11 @@ try {
 
 **Interfaces:** produces `webDenominators(analysis)` returning `Denominator[]` for `route`, `dom-node` (interactive elements only), `request`, `asset`.
 
-- [ ] **Step 1: Failing test** — over the web fixture, `webDenominators` returns exactly the counts the fixture asserts (routes 4, interactive DOM 9, requests 6, assets 3), every `blind_spots` array is non-empty, and every denominator's `probe` starts with `web.`.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — counts come from the analysis facts, never from `built.completeness`.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): enumerate the web coverage denominator`
+- [x] **Step 1: Failing test** — over the web fixture, `webDenominators` returns exactly the counts the fixture asserts (routes 4, interactive DOM 9, requests 6, assets 3), every `blind_spots` array is non-empty, and every denominator's `probe` starts with `web.`.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — counts come from the analysis facts, never from `built.completeness`.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): enumerate the web coverage denominator`
 
 ### Task 11: Gate
 
@@ -259,25 +259,25 @@ try {
 
 **Interfaces:** produces `gate`, `BlueprintGateError`, `VIOLATION_CODES`.
 
-- [ ] **Step 1: Failing test** — a table-driven case per code in spec §8: mutate one compiled package per row (drop an evidence file, drop `derivation`, drop `resolution`, set `ceiling: "executed"` on a `statically-evidenced` run, remove a `falsifier`, point a `falsifier` at a `structure` check for an `executed` claim, remove one ledger entry, mark one entry `status: "unknown"`, exceed the `out_of_scope` cap, drop one acceptance check, add an unexecutable check, break a manifest hash) and assert exactly that one code appears and `status !== "complete"`.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — `ok` is `violations.length === 0`; `status` is `complete` only when `ok && closure.ratio === 1`; violations sorted by `code` then `subject`.
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): fail the export closed on any unsupported claim`
+- [x] **Step 1: Failing test** — a table-driven case per code in spec §8: mutate one compiled package per row (drop an evidence file, drop `derivation`, drop `resolution`, set `ceiling: "executed"` on a `statically-evidenced` run, remove a `falsifier`, point a `falsifier` at a `structure` check for an `executed` claim, remove one ledger entry, mark one entry `status: "unknown"`, exceed the `out_of_scope` cap, drop one acceptance check, add an unexecutable check, break a manifest hash) and assert exactly that one code appears and `status !== "complete"`.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — `ok` is `violations.length === 0`; `status` is `complete` only when `ok && closure.ratio === 1`; violations sorted by `code` then `subject`.
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): fail the export closed on any unsupported claim`
 
 ### Task 12: Coverage and completeness derive from the ledger
 
 **Files:** modify `ui/blueprint.mjs` (`evaluateCompleteness`, `buildBlueprint`), `ui/app.js` (violation banner), `ui/blueprint-gate-integration.test.mjs` (new)
 
-- [ ] **Step 1: Failing test** — with three acceptance criteria that carry no check, `buildBlueprint` throws `BlueprintGateError` listing `acceptance.criterion.missing`, and with `allowIncomplete: true` it writes the package plus `GATE-REPORT.json` and the returned object carries `violations`; `coverage.status` equals `"belegt"` only when `closure.ratio === 1` and `violations` is empty.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement** — delete the `openQuestions.length < 4` threshold; `completeness.status`/`gaps` are projections of gate violations; `ui/app.js` shows the violation list instead of offering the download when `ok === false`.
-- [ ] **Step 4: Green**, `ui/blueprint-evidence.test.mjs` still green.
-- [ ] **Step 5: Commit** — `feat(blueprint): derive coverage from the closure ledger`
+- [x] **Step 1: Failing test** — with three acceptance criteria that carry no check, `buildBlueprint` throws `BlueprintGateError` listing `acceptance.criterion.missing`, and with `allowIncomplete: true` it writes the package plus `GATE-REPORT.json` and the returned object carries `violations`; `coverage.status` equals `"belegt"` only when `closure.ratio === 1` and `violations` is empty.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement** — delete the `openQuestions.length < 4` threshold; `completeness.status`/`gaps` are projections of gate violations; `ui/app.js` shows the violation list instead of offering the download when `ok === false`.
+- [x] **Step 4: Green**, `ui/blueprint-evidence.test.mjs` still green.
+- [x] **Step 5: Commit** — `feat(blueprint): derive coverage from the closure ledger`
 
 ### Stage 3 gate
 
-- [ ] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
+- [x] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
 
 ## Stage 4 — Executable acceptance criteria
 
@@ -287,39 +287,39 @@ try {
 
 **Interfaces:** produces `buildAcceptance({ checks })`, `renderAcceptanceReport(verdicts)`; consumes claim `falsifier` ids.
 
-- [ ] **Step 1: Failing test** — `buildAcceptance` rejects a duplicate check id, accepts all six kinds from spec §9, and `renderAcceptanceReport` prints one line per criterion with `passed`/`failed`/`skipped`/`unexecutable`.
-- [ ] **Step 2: Run and confirm red.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): emit an executable acceptance file`
+- [x] **Step 1: Failing test** — `buildAcceptance` rejects a duplicate check id, accepts all six kinds from spec §9, and `renderAcceptanceReport` prints one line per criterion with `passed`/`failed`/`skipped`/`unexecutable`.
+- [x] **Step 2: Run and confirm red.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): emit an executable acceptance file`
 
 ### Task 14: Checks from claims
 
 **Files:** create `ui/blueprint/acceptance-emit.mjs`, `ui/blueprint/acceptance-emit.test.mjs`
 
-- [ ] **Step 1: Failing test** — an `observed`/`executed` claim over a network transcript emits an `http` check whose `request.selector.index` equals the claim's `request` selector; a DOM claim emits `dom`; an `assumed` claim emits no check and must carry `falsifier: "gap:<entry>"`; a claim whose falsifier names a missing check yields `claim.falsifier.missing`.
-- [ ] **Step 2: Red → Step 3: Implement → Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): derive acceptance checks from claims`
+- [x] **Step 1: Failing test** — an `observed`/`executed` claim over a network transcript emits an `http` check whose `request.selector.index` equals the claim's `request` selector; a DOM claim emits `dom`; an `assumed` claim emits no check and must carry `falsifier: "gap:<entry>"`; a claim whose falsifier names a missing check yields `claim.falsifier.missing`.
+- [x] **Step 2: Red → Step 3: Implement → Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): derive acceptance checks from claims`
 
 ### Task 15: Acceptance runner
 
 **Files:** create `ui/blueprint/run-acceptance.mjs`, `ui/blueprint/run-acceptance.test.mjs`
 
-- [ ] **Step 1: Failing test** — over a fixture rebuild directory containing `index.html` and a recorded transcript, `runAcceptance({ file, root })` returns `{ passed: 2, failed: 1, skipped: 1, unexecutable: 0 }` for a file with one matching, one mismatching, one skipped-`function` and one `dom` check, and never throws for a failing criterion.
-- [ ] **Step 2: Red → Step 3: Implement** (`http` compares status + JSON body shape; `dom` compares selector presence; `structure` compares file existence; `function`/`process` return `skipped` with `reason: "requires:<kind>"` outside the harness) **→ Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): execute acceptance checks against a rebuild`
+- [x] **Step 1: Failing test** — over a fixture rebuild directory containing `index.html` and a recorded transcript, `runAcceptance({ file, root })` returns `{ passed: 2, failed: 1, skipped: 1, unexecutable: 0 }` for a file with one matching, one mismatching, one skipped-`function` and one `dom` check, and never throws for a failing criterion.
+- [x] **Step 2: Red → Step 3: Implement** (`http` compares status + JSON body shape; `dom` compares selector presence; `structure` compares file existence; `function`/`process` return `skipped` with `reason: "requires:<kind>"` outside the harness) **→ Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): execute acceptance checks against a rebuild`
 
 ### Task 16: Sections 8 and 10
 
 **Files:** modify `ui/blueprint/render.mjs`, `ui/blueprint/render.test.mjs`
 
-- [ ] **Step 1: Failing test** — `## 8. Abnahmekriterien` renders a table with `Kriterium | Prüfung | Art | Fixture` and one row per acceptance check; a criterion without a check renders its row with `fehlt` and the package cannot be `complete`; `## 10. Beweise im Paket` lists per claim `kind`, `ceiling`, evidence path, falsifier.
-- [ ] **Step 2: Red → Step 3: Implement → Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): render acceptance and evidence tables`
+- [x] **Step 1: Failing test** — `## 8. Abnahmekriterien` renders a table with `Kriterium | Prüfung | Art | Fixture` and one row per acceptance check; a criterion without a check renders its row with `fehlt` and the package cannot be `complete`; `## 10. Beweise im Paket` lists per claim `kind`, `ceiling`, evidence path, falsifier.
+- [x] **Step 2: Red → Step 3: Implement → Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): render acceptance and evidence tables`
 
 ### Stage 4 gate
 
-- [ ] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
+- [x] `npx vitest run --project ui-evidence` green; `npm run check:fast` exit 0.
 
 ## Stage 5 — Fidelity harness
 
@@ -327,21 +327,21 @@ try {
 
 **Files:** create `scripts/blueprint-fidelity.mjs` (argument parsing and output only), `ui/blueprint/fidelity.mjs` (`runFidelity`), `ui/blueprint/fidelity.test.mjs`, modify `package.json` (`"blueprint:fidelity"`). Tests live under `ui/` because the `ui-evidence` project only collects `ui/**/*.test.mjs`.
 
-- [ ] **Step 1: Failing test** — `runFidelity` rejects a package directory without `MANIFEST.json` (`/manifest/`), rejects a manifest whose hash does not match (`manifest.hash_mismatch`), and for a valid package returns a report with `{ schema: "rea.blueprint.rebuild-report", schema_version: 1, package: { id, ceiling }, criteria: [...], summary: { passed, failed, skipped, unexecutable }, verdict: "pass" | "fail" }`.
-- [ ] **Step 2: Red → Step 3: Implement** — it never builds the rebuild; `--out` defaults to `<rebuild>/rebuild-report.json`. **→ Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): add the fidelity harness`
+- [x] **Step 1: Failing test** — `runFidelity` rejects a package directory without `MANIFEST.json` (`/manifest/`), rejects a manifest whose hash does not match (`manifest.hash_mismatch`), and for a valid package returns a report with `{ schema: "rea.blueprint.rebuild-report", schema_version: 1, package: { id, ceiling }, criteria: [...], summary: { passed, failed, skipped, unexecutable }, verdict: "pass" | "fail" }`.
+- [x] **Step 2: Red → Step 3: Implement** — it never builds the rebuild; `--out` defaults to `<rebuild>/rebuild-report.json`. **→ Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): add the fidelity harness`
 
 ### Task 18: Corpus
 
 **Files:** create `ui/blueprint/corpus/web-fixture/{blueprint/, rebuild/, expected.json}`, `ui/blueprint/corpus.test.mjs`
 
-- [ ] **Step 1: Failing test** — the case produces its package at test time by calling `buildBlueprint` over `blueprint/` inputs into a temporary `artifactsDir` (no ZIP is committed), then runs `runFidelity` against `rebuild/`; the report's verdict equals `expected.json#verdict`, each failing criterion carries `classification: "blueprint-defect" | "rebuild-defect"` from `expected.json`, and deleting one file from `rebuild/` flips the verdict to `fail` while the classification stays `rebuild-defect`.
-- [ ] **Step 2: Red → Step 3: Implement → Step 4: Green.**
-- [ ] **Step 5: Commit** — `test(blueprint): pin one fidelity corpus case`
+- [x] **Step 1: Failing test** — the case produces its package at test time by calling `buildBlueprint` over `blueprint/` inputs into a temporary `artifactsDir` (no ZIP is committed), then runs `runFidelity` against `rebuild/`; the report's verdict equals `expected.json#verdict`, each failing criterion carries `classification: "blueprint-defect" | "rebuild-defect"` from `expected.json`, and deleting one file from `rebuild/` flips the verdict to `fail` while the classification stays `rebuild-defect`.
+- [x] **Step 2: Red → Step 3: Implement → Step 4: Green.**
+- [x] **Step 5: Commit** — `test(blueprint): pin one fidelity corpus case`
 
 ### Stage 5 gate
 
-- [ ] `npx vitest run --project ui-evidence ui/blueprint/corpus.test.mjs` green; `npm run check:fast` exit 0.
+- [x] `npx vitest run --project ui-evidence ui/blueprint/corpus.test.mjs` green; `npm run check:fast` exit 0.
 
 ## Stage 6 — Other target classes
 
