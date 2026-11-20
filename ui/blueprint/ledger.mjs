@@ -15,6 +15,7 @@
  */
 
 import { CEILING_ORDER } from "./ceiling.mjs";
+import { webDenominators, webEntries } from "./denominators/web.mjs";
 
 export const LEDGER_SCHEMA = "rea.blueprint.ledger";
 export const LEDGER_SCHEMA_VERSION = 1;
@@ -294,25 +295,38 @@ export function ledgerViolations(ledger) {
   return violations;
 }
 
-/** Ledger over the entries an analysis already materialised. */
+/**
+ * Ledger over everything an analysis makes assertable.
+ *
+ * The entries `toAnalysis` already materialised (`evidence:<path>`, `step:<n>`,
+ * `open-question:<id>`) keep their ids unchanged, so every `gap:` falsifier a
+ * stage-2 claim carries resolves here. For a web target the enumerated route,
+ * DOM, request and asset items are added as their own classes.
+ */
 export function ledgerFromAnalysis(analysis) {
-  const entries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
-  const classes = [...new Set(entries.map((entry) => entry.class))].sort(
+  const ownEntries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
+  const claims = Array.isArray(analysis?.claims) ? analysis.claims : [];
+  const classes = [...new Set(ownEntries.map((entry) => entry.class))].sort(
     compareStrings,
   );
-  const targetClass = analysis?.target?.kind ?? "target";
+  const targetClass = String(analysis?.target?.kind ?? "target")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .toLowerCase();
   const denominators = classes.map((cls) =>
     denominator({
       class: cls,
-      probe: `${String(targetClass)
-        .replace(/[^a-z0-9]+/gi, "-")
-        .toLowerCase()}.${cls}-scan`,
-      items: entries.filter((entry) => entry.class === cls).length,
+      probe: `${targetClass}.${cls}-scan`,
+      items: ownEntries.filter((entry) => entry.class === cls).length,
       blind_spots: [
         `${cls} wird aus der Erhebung abgeleitet; eine unabhängige Zählung am Ziel existiert nicht.`,
       ],
     }),
   );
+  const entries = [...ownEntries];
+  if (analysis?.target?.kind === "web") {
+    denominators.push(...webDenominators(analysis));
+    entries.push(...webEntries(analysis, claims));
+  }
   return buildLedger({
     ceiling: analysis?.ceiling?.ceiling ?? "inferred-only",
     denominators,

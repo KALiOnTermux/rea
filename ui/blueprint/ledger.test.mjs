@@ -175,6 +175,9 @@ test("ledgerFromAnalysis materialises exactly the stage-2 entry ids", () => {
     if (!claim.falsifier.startsWith("gap:")) continue;
     assert.equal(ids.has(claim.falsifier.slice(4)), true, claim.falsifier);
   }
-  assert.equal(ledger.entries.length, analysis.ledger.length);
+  for (const entry of analysis.ledger) {
+    assert.equal(ids.has(entry.id), true, entry.id);
+  }
+  assert.equal(ledger.entries.length >= analysis.ledger.length, true);
   assert.equal(ledger.ceiling, analysis.ceiling.ceiling);
 });
