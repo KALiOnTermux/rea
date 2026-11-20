@@ -363,7 +363,8 @@
     "licenses:generate": "node scripts/generate-third-party-inventory.mjs",
     "licenses:check": "node scripts/generate-third-party-inventory.mjs --check",
     "lint:typed": "node scripts/ci/static-check-report.mjs typed-lint",
-    "knip:production": "node scripts/ci/production-reachability-report.mjs"
+    "knip:production": "node scripts/ci/production-reachability-report.mjs",
+    "blueprint:fidelity": "node scripts/blueprint-fidelity.mjs"
   },
   "lint-staged": {
     "*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}": [
