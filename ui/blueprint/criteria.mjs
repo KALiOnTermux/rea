@@ -156,24 +156,41 @@ function formCheck(criterion, facts) {
   };
 }
 
+/**
+ * The storage criterion is checked against the shipped storage artifact: the
+ * check is executable (delete the artifact and it fails) and the ledger records
+ * a gap when the capture observed no storage at all.
+ */
+function storageCheck(criterion) {
+  return {
+    id: `acceptance.criterion.${slug(criterion)}`,
+    kind: "structure",
+    criterion,
+    fixture: "surface/storage.json",
+    paths: ["surface/storage.json"],
+  };
+}
+
 /** Web criteria with a builder, keyed by a distinctive phrase. */
 const WEB_BUILDERS = [
   { match: "Startseite rendert", build: surfaceCheck },
   { match: "Route ist erreichbar", build: routeCheck },
   { match: "API-Aufrufe stimmen", build: apiCheck },
   { match: "Formulare und Buttons", build: formCheck },
+  { match: "Local Storage", build: storageCheck },
 ];
 
 /**
- * Boundaries that are known to have no evidence in a capture-only run.
+ * Criteria whose check exists but whose evidence was not observed in this run.
  *
- * The reason is rendered in the package and recorded in the ledger, so a reader
- * sees why the criterion has no check instead of finding it gone.
+ * The criterion stays declared with its check; the ledger carries the gap with
+ * this reason, so nothing is dropped and nothing is claimed as covered.
  */
-const WEB_BOUNDARIES = [
+const WEB_GAPS = [
   {
     match: "Local Storage",
-    why: "Die Aufnahme enthält keinen Storage-Beleg (Cookies, Local oder Session Storage); ohne ihn ist die Anforderung nicht prüfbar.",
+    when: (facts) => facts?.data?.storage_keys == null,
+    why: "Die Aufnahme enthält keinen Storage-Beleg (Cookies, Local oder Session Storage); der Check bestätigt nur, dass der Speicherzustand als Beleg vorliegt, nicht seine Schlüssel.",
   },
 ];
 
@@ -187,6 +204,7 @@ const WEB_BOUNDARIES = [
 export function criteriaChecks(criteria, facts, { targetClass = "web" } = {}) {
   const checks = [];
   const boundaries = [];
+  const gaps = [];
   const unmapped = [];
   for (const criterion of asArray(criteria)) {
     if (typeof criterion !== "string" || criterion === "") continue;
@@ -197,16 +215,14 @@ export function criteriaChecks(criteria, facts, { targetClass = "web" } = {}) {
       builder && targetClass === "web" ? builder.build(criterion, facts) : null;
     if (built) {
       checks.push(built);
-      continue;
-    }
-    const boundary = WEB_BOUNDARIES.find((entry) =>
-      criterion.includes(entry.match),
-    );
-    if (boundary) {
-      boundaries.push({ criterion, why: boundary.why });
+      const gap = WEB_GAPS.find(
+        (entry) =>
+          criterion.includes(entry.match) && entry.when?.(facts) === true,
+      );
+      if (gap) gaps.push({ criterion, why: gap.why, check: built.id });
       continue;
     }
     unmapped.push(criterion);
   }
-  return { checks, boundaries, unmapped };
+  return { checks, boundaries, gaps, unmapped };
 }

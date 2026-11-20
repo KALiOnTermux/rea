@@ -92,6 +92,9 @@ function normaliseEvidence(evidence) {
       path: entry.path,
       bytes: Number.isInteger(entry.bytes) ? entry.bytes : null,
       sha256: entry.sha256 ?? null,
+      // Keep the derived marker: a derived file ships with the package but is
+      // not an observation, so it must not become a claim or rebuild check.
+      ...(entry.derived === true ? { derived: true } : {}),
     }))
     .sort((left, right) => compareStrings(left.path, right.path));
 }
@@ -108,34 +111,36 @@ function staticCeiling(ceiling) {
 }
 
 function observedUnits(targetClass, ceiling, evidence) {
-  return evidence.map((entry) => {
-    const entryId = `evidence:${entry.path}`;
-    return {
-      claim: makeClaim({
-        id: claimId(`${targetClass}.evidence`, entry.path),
-        statement: `Die Belegdatei ${entry.path} (${entry.role}) liegt im Paket und ist gehasht.`,
-        kind: "observed",
-        ceiling: staticCeiling(ceiling),
-        subject: `/evidence/${entry.path}`,
-        evidence: [
-          {
-            path: entry.path,
-            ...(entry.sha256 ? { sha256: entry.sha256 } : {}),
-            selector: { type: "whole" },
-          },
-        ],
-        falsifier: `gap:${entryId}`,
-        limits: [],
-      }),
-      entry: {
-        id: entryId,
-        class: "evidence",
-        subject: entry.path,
-        source: { path: entry.path, selector: { type: "whole" } },
-        status: "covered",
-      },
-    };
-  });
+  return evidence
+    .filter((entry) => entry.derived !== true)
+    .map((entry) => {
+      const entryId = `evidence:${entry.path}`;
+      return {
+        claim: makeClaim({
+          id: claimId(`${targetClass}.evidence`, entry.path),
+          statement: `Die Belegdatei ${entry.path} (${entry.role}) liegt im Paket und ist gehasht.`,
+          kind: "observed",
+          ceiling: staticCeiling(ceiling),
+          subject: `/evidence/${entry.path}`,
+          evidence: [
+            {
+              path: entry.path,
+              ...(entry.sha256 ? { sha256: entry.sha256 } : {}),
+              selector: { type: "whole" },
+            },
+          ],
+          falsifier: `gap:${entryId}`,
+          limits: [],
+        }),
+        entry: {
+          id: entryId,
+          class: "evidence",
+          subject: entry.path,
+          source: { path: entry.path, selector: { type: "whole" } },
+          status: "covered",
+        },
+      };
+    });
 }
 
 /** Caps how many capture items become claims; the rest stay ledger gaps. */

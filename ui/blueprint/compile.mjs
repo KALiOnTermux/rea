@@ -81,6 +81,7 @@ export function compile(analysis) {
   );
   const ledger = ledgerFromAnalysis(analysis, {
     boundaries: declared.boundaries,
+    gaps: declared.gaps,
   });
   const emitted = emitAcceptance({
     claims: sortClaims(analysis.claims ?? []),
@@ -98,6 +99,7 @@ export function compile(analysis) {
   // the rest is an explicit open boundary, recorded next to the package.
   blueprint.acceptance = emitted.criteria ?? blueprint.acceptance;
   blueprint.boundaries = emitted.boundaries ?? [];
+  blueprint.criterion_gaps = emitted.gaps ?? declared.gaps ?? [];
   blueprint.coverage.ratio = ledger.closure.ratio;
   blueprint.coverage.status =
     ledger.closure.ratio === 1

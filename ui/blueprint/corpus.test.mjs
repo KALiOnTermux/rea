@@ -140,3 +140,73 @@ test("an http check goes red when the transcript disagrees", async () => {
     "failed",
   );
 });
+
+test("the storage criterion goes red when the rebuild ships no storage record", async () => {
+  const { rebuild, acceptance, expected } = await buildCase();
+  const storage = acceptance.checks.find(
+    (check) =>
+      check.kind === "structure" &&
+      check.paths?.includes("surface/storage.json"),
+  );
+  assert.equal(Boolean(storage), true, "corpus needs the storage check");
+  await rm(join(rebuild, "surface", "storage.json"));
+  const report = await runFidelity({
+    package: (await buildCase()).result.dir,
+    rebuild,
+    expectations: expected,
+  });
+  assert.equal(report.verdict, "fail");
+  const verdict = report.criteria.find((item) => item.id === storage.id);
+  assert.equal(verdict.status, "failed");
+  assert.equal(verdict.detail.includes("surface/storage.json"), true);
+});
+
+test("the package ships the derived accessibility and storage records", async () => {
+  const { result, acceptance } = await buildCase();
+  const accessibility = await readFile(
+    join(result.dir, "surface", "accessibility.txt"),
+    "utf8",
+  );
+  assert.equal(accessibility.includes("derived"), true);
+  assert.equal(
+    accessibility.includes("# Kaufen") || accessibility.includes("Kaufen"),
+    true,
+  );
+  const storage = JSON.parse(
+    await readFile(join(result.dir, "surface", "storage.json"), "utf8"),
+  );
+  assert.equal(storage.observed, false);
+  assert.equal(storage.local_storage.length, 0);
+  const derived = result.blueprint.evidence
+    .filter((entry) => entry.derived === true)
+    .map((entry) => entry.path)
+    .sort();
+  assert.deepEqual(derived, [
+    "surface/accessibility.txt",
+    "surface/storage.json",
+  ]);
+  // All five declared criteria stay criteria; the storage one is a criterion with
+  // its own check and a ledger gap, not a boundary that replaced it.
+  assert.equal(result.blueprint.acceptance.length, 5);
+  assert.deepEqual(result.blueprint.boundaries, []);
+  const storageCriterion = result.blueprint.acceptance.find((criterion) =>
+    criterion.includes("Local Storage"),
+  );
+  assert.equal(Boolean(storageCriterion), true);
+  assert.equal(
+    result.blueprint.criterion_gaps.some(
+      (gap) => gap.criterion === storageCriterion,
+    ),
+    true,
+  );
+  const storageCheck = acceptance.checks.find(
+    (check) =>
+      check.kind === "structure" &&
+      check.paths?.includes("surface/storage.json") &&
+      check.criterion === storageCriterion,
+  );
+  assert.equal(Boolean(storageCheck), true);
+  const kinds = new Set(acceptance.checks.map((check) => check.kind));
+  assert.equal(kinds.has("http"), true);
+  assert.equal(kinds.has("dom"), true);
+});

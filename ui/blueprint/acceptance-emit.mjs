@@ -118,6 +118,7 @@ export function emitAcceptance({
     claims: rewritten,
     missing,
     boundaries: resolved.boundaries,
+    gaps: resolved.gaps,
     unmapped: resolved.unmapped,
     criteria: criteriaWithChecks,
   };

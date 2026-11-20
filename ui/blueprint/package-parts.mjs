@@ -284,6 +284,8 @@ export function logicSpec(blueprint) {
     "",
     "Die Prüfungen zu diesen Fakten stehen in `acceptance.json`; die Falsifier nennt `BLUEPRINT.md`, Abschnitt 10.",
     "",
+    "Der Rebuild liefert `surface/storage.json` mit den beobachteten Speicherschlüsseln; wurde nichts beobachtet, steht dort `observed: false` mit Begründung. Der Struktur-Check des Storage-Kriteriums prüft genau diese Datei.",
+    "",
   );
   return lines.join("\n");
 }

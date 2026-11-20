@@ -1617,7 +1617,7 @@ async function addJson(ctx, role, path, name) {
   return { payload, meta };
 }
 
-async function addBuffer(ctx, role, name, buffer) {
+async function addBuffer(ctx, role, name, buffer, { derived = false } = {}) {
   if (!buffer) return null;
   ctx.bundle.addData(name, buffer);
   ctx.evidence.push({
@@ -1626,8 +1626,82 @@ async function addBuffer(ctx, role, name, buffer) {
     source: null,
     bytes: buffer.length,
     sha256: sha256(buffer),
+    // A derived file is a reading of the evidence, not an observation: it ships
+    // with the package but does not become a rebuild requirement.
+    ...(derived ? { derived: true } : {}),
   });
   return true;
+}
+
+/**
+ * A textual accessibility outline derived from the captured DOM.
+ *
+ * The capture has no accessibility tree, so this file says so and lists what the
+ * DOM proves: landmarks, headings, controls, links and form fields. It is marked
+ * `derived` because it is a reading of the DOM, not a browser a11y snapshot.
+ */
+function accessibilityOutline(html, dom) {
+  const lines = [
+    "# Accessibility-Umriss (derived)",
+    "",
+    "Quelle: `surface/dom.html` (DOM der Aufnahme). Ein Accessibility-Baum wurde in dieser Aufnahme nicht erfasst; diese Datei leitet den Umriss ausschließlich aus dem DOM ab.",
+    "",
+    `Titel: ${html?.title || "unbekannt"}`,
+    `Sprache: ${html?.lang || "nicht beobachtet"}`,
+    "",
+    "## Landmarks",
+    "",
+  ];
+  const landmarks = Object.entries(html?.landmarks || {})
+    .filter(([, count]) => count > 0)
+    .sort(([left], [right]) => (left < right ? -1 : 1));
+  if (landmarks.length === 0) lines.push("- keine Landmark-Elemente im DOM");
+  for (const [name, count] of landmarks) lines.push(`- ${name}: ${count}`);
+
+  const section = (title, rows) => {
+    if (rows.length === 0) return;
+    lines.push("", `## ${title}`, "");
+    lines.push(...rows);
+  };
+  section(
+    "Überschriften",
+    (html?.headings || []).map(
+      (heading) => `- ${"#".repeat(heading.level || 1)} ${heading.text}`,
+    ),
+  );
+  section(
+    "Bedienelemente",
+    (html?.buttons || []).map(
+      (button) =>
+        `- ${button.label}${button.id ? ` (#${button.id})` : ""}${button.type ? ` [${button.type}]` : ""}`,
+    ),
+  );
+  section(
+    "Links",
+    (html?.links || []).map(
+      (link) =>
+        `- ${link.label || "(ohne Text)"} → ${link.href || "(ohne Ziel)"}`,
+    ),
+  );
+  section("Formulare und Eingaben", [
+    ...(html?.forms || []).map(
+      (form) =>
+        `- form → ${form.action || "(aktuell)"} [${form.method || "GET"}]`,
+    ),
+    ...(html?.inputs || []).map(
+      (input) =>
+        `- ${input.tag}${input.type ? ` type=${input.type}` : ""}${input.name ? ` name=${input.name}` : ""}${input.placeholder ? ` „${input.placeholder}“` : ""}`,
+    ),
+  ]);
+  if (html?.text_excerpt) {
+    lines.push("", "## Sichtbarer Text (Auszug)", "", html.text_excerpt);
+  }
+  lines.push(
+    "",
+    `DOM-Größe: ${Buffer.byteLength(String(dom ?? ""), "utf8")} Bytes`,
+    "",
+  );
+  return lines.join("\n");
 }
 
 function progress(ctx, stage, label, detail, percent) {
@@ -2010,6 +2084,22 @@ function auditCheckEvidence(check, ctx, virtualFiles) {
   }
 }
 
+/**
+ * Why a proof artifact a probe expects cannot be part of this package.
+ *
+ * These are the limits the package already declares (no screenshot, no source
+ * text, no static analysis); naming them at the check keeps the reference from
+ * pointing at a file that was never shipped.
+ */
+const EVIDENCE_LIMITS = {
+  "surface/screenshot.png":
+    "kein Screenshot in der Aufnahme; ohne Pixel ist er nicht erzeugbar",
+  "evidence/source-analysis.json":
+    "kein Quelltext in diesem Lauf; ohne Quelle nicht erzeugbar",
+  "evidence/web-analysis.json":
+    "keine statische JavaScript-Analyse in diesem Lauf; ohne Analyse nicht erzeugbar",
+};
+
 function evaluateCompleteness(bp, promptDraft, ctx, virtualFiles = {}) {
   const kind = blueprintKind(bp);
   const checks = [];
@@ -2025,10 +2115,24 @@ function evaluateCompleteness(bp, promptDraft, ctx, virtualFiles = {}) {
     (name) =>
       name.startsWith("source/") || name.startsWith("internals/pseudocode/"),
   );
+  const shipped = new Set(bundleNames);
   const add = (...args) => {
     const check = completenessCheck(...args);
-    check.evidence = checkEvidenceRefs(check.id, bp, ctx, sourceFiles);
+    const refs = checkEvidenceRefs(check.id, bp, ctx, sourceFiles);
+    // A probe names the artifact its proof would come from. A reference to an
+    // artifact this run cannot produce must not dangle: it becomes a named
+    // limit on the check, which stays failed instead of pointing at nothing.
+    check.evidence = refs.filter((entry) => shipped.has(entry.path));
+    const dropped = refs.filter((entry) => !shipped.has(entry.path));
+    if (dropped.length > 0) {
+      check.limit = [...new Set(dropped.map((entry) => entry.path))];
+      check.limit_why =
+        EVIDENCE_LIMITS[check.limit[0]] ?? "in diesem Lauf nicht erzeugbar";
+    }
     auditCheckEvidence(check, ctx, virtualFiles);
+    if (check.limit) {
+      check.detail = `${check.detail}; Grenze: ${check.limit.join(", ")} (${check.limit_why})`;
+    }
     checks.push(check);
   };
   const graph = internals.semantic_graph || {};
@@ -2600,6 +2704,14 @@ async function buildWeb(ctx) {
       "surface/accessibility.txt",
       Buffer.from(accessibility, "utf8"),
     );
+  } else if (html) {
+    await addBuffer(
+      ctx,
+      "Accessibility-Umriss (aus dem DOM abgeleitet)",
+      "surface/accessibility.txt",
+      Buffer.from(accessibilityOutline(html, dom), "utf8"),
+      { derived: true },
+    );
   }
   if (screenshot?.data_base64) {
     const bytes = Buffer.from(screenshot.data_base64, "base64");
@@ -2616,6 +2728,33 @@ async function buildWeb(ctx) {
       "Speicherzustand der Seite (Schlüssel und Typen)",
       "surface/storage.json",
       Buffer.from(JSON.stringify(storage, null, 2), "utf8"),
+    );
+  } else {
+    // The capture carries no storage artifact. The package still ships the typed
+    // record of that absence, so the storage criterion has a file to check and a
+    // reader sees what was (not) observed instead of a dangling path.
+    await addBuffer(
+      ctx,
+      "Speicherzustand (keine Storage-Daten in der Aufnahme)",
+      "surface/storage.json",
+      Buffer.from(
+        JSON.stringify(
+          {
+            schema: "rea.surface.storage",
+            schema_version: 1,
+            observed: false,
+            cookies: [],
+            local_storage: [],
+            session_storage: [],
+            source: "evidence/web-capture.json",
+            why: "Die Aufnahme enthält kein Storage-Artefakt (Cookies, Local oder Session Storage).",
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      ),
+      { derived: true },
     );
   }
   if (history) {
@@ -3241,7 +3380,7 @@ function projectCompleteness(probe, result, files = null) {
     ...check,
     evidence: (check.evidence ?? []).map((entry) =>
       shipped && entry?.path && !shipped.has(entry.path)
-        ? { unavailable: entry.path, why: "nicht im Paket enthalten" }
+        ? { limit: entry.path, why: "in diesem Lauf nicht erzeugbar" }
         : entry,
     ),
   }));
@@ -3297,7 +3436,15 @@ export async function buildBlueprint(config) {
     requestedCeiling: config.requestedCeiling ?? nativeRequestedCeiling(built),
     generator: { name: "REA Studio", command: config.reaVersion || "rea" },
   });
-  analysis.source_included = ctx.includeSources;
+  // "Source included" must describe the package, not the flag: a run that found
+  // no source file ships none, and the prompt must not point at `source/`.
+  analysis.source_included =
+    ctx.includeSources &&
+    ctx.bundle.entries.some(
+      (entry) =>
+        entry.name.startsWith("source/") ||
+        entry.name.startsWith("internals/pseudocode/"),
+    );
   analysis.target = target;
   analysis.omitted = [...(ctx.bundle.omitted ?? [])];
   analysis.bundle = {

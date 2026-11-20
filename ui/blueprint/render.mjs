@@ -899,7 +899,7 @@ export function renderMarkdown(compiled) {
         .map((entry) =>
           entry.path
             ? `\`${entry.path}${entry.pointer ? `#${entry.pointer}` : entry.line ? `:${entry.line}` : ""}\``
-            : `nicht im Paket enthalten: ${entry.unavailable}`,
+            : `Grenze: ${entry.limit}`,
         )
         .join(", ");
       bullet(
@@ -968,6 +968,9 @@ export function renderMarkdown(compiled) {
         );
       }
     }
+    for (const gap of bp.criterion_gaps ?? []) {
+      add(`| ${cell(gap.criterion)} | ohne Beleg (Gap im Ledger) | — | — |`);
+    }
     for (const boundary of bp.boundaries ?? []) {
       add(`| ${cell(boundary.criterion)} | offene Grenze | — | — |`);
     }
@@ -977,6 +980,12 @@ export function renderMarkdown(compiled) {
         ? `${missing} Kriterium/Kriterien ohne Prüfung; das blockiert \`complete\`.`
         : "Jedes Kriterium hat eine ausführbare Prüfung.",
     );
+    for (const gap of bp.criterion_gaps ?? []) {
+      add("");
+      add(
+        `- **Nicht belegt:** ${gap.criterion} — ${gap.why} (Gap \`criterion:${gap.criterion}\` im Ledger)`,
+      );
+    }
     for (const boundary of bp.boundaries ?? []) {
       add("");
       add(`- **Offene Grenze:** ${boundary.criterion} — ${boundary.why}`);

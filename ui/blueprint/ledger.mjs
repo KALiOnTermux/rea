@@ -347,22 +347,24 @@ function classEntries(analysis, claims) {
   return [];
 }
 
-/** One gap per declared criterion that has no check in this run. */
-function boundaryEntries(boundaries) {
-  return boundaries.map((boundary) => {
-    const id = `criterion:${boundary.criterion}`;
+/** One gap per declared criterion that is not covered in this run. */
+function boundaryEntries(gaps) {
+  return gaps.map((gap) => {
+    const id = `criterion:${gap.criterion}`;
     return {
       id,
       class: "criterion",
-      subject: boundary.criterion,
+      subject: gap.criterion,
       source: { path: "acceptance.json", selector: { type: "whole" } },
       status: "gap",
       claims: [],
       gap: {
         id,
-        why: boundary.why,
+        why: gap.why,
         action:
-          "Beleg für dieses Kriterium aufnehmen und einen ausführbaren Check daraus ableiten.",
+          gap.kind === "unobserved"
+            ? "Beleg für dieses Kriterium aufnehmen; der Check bleibt bestehen und prüft dann die beobachteten Werte."
+            : "Beleg für dieses Kriterium aufnehmen und einen ausführbaren Check daraus ableiten.",
         blocking: false,
       },
     };
@@ -399,7 +401,10 @@ function omissionEntries(omitted) {
  * enumerates itself: routes and DOM for web, symbols and exit paths for source,
  * screens and assets for an APK.
  */
-export function ledgerFromAnalysis(analysis, { boundaries = [] } = {}) {
+export function ledgerFromAnalysis(
+  analysis,
+  { boundaries = [], gaps = [] } = {},
+) {
   const ownEntries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
   const claims = Array.isArray(analysis?.claims) ? analysis.claims : [];
   const targetClass = String(analysis?.target?.kind ?? "target")
@@ -415,17 +420,29 @@ export function ledgerFromAnalysis(analysis, { boundaries = [] } = {}) {
     ),
     ...enumerated,
   ];
-  // A declared criterion without a check is an open boundary, not a missing
-  // line: it stays in the ledger as a gap that names why it cannot be tested.
-  const boundaryList = Array.isArray(boundaries) ? boundaries : [];
-  if (boundaryList.length > 0) {
+  // A criterion the run cannot cover stays in the ledger as a gap: either it has
+  // no executable check (boundary) or its check has no observed evidence (gap).
+  // Neither path drops the criterion from the package.
+  const criterionGaps = [
+    ...(Array.isArray(boundaries) ? boundaries : []).map((boundary) => ({
+      criterion: boundary.criterion,
+      why: boundary.why,
+      kind: "boundary",
+    })),
+    ...(Array.isArray(gaps) ? gaps : []).map((gap) => ({
+      criterion: gap.criterion,
+      why: gap.why,
+      kind: "unobserved",
+    })),
+  ];
+  if (criterionGaps.length > 0) {
     denominators.push(
       denominator({
         class: "criterion",
-        probe: `${targetClass}.criterion-boundaries`,
-        items: boundaryList.length,
+        probe: `${targetClass}.criterion-gaps`,
+        items: criterionGaps.length,
         blind_spots: [
-          "Diese Kriterien haben in diesem Lauf keinen ausführbaren Check; sie bleiben als offene Grenze stehen.",
+          "Diese Kriterien sind deklariert, aber in diesem Lauf nicht belegt; der Grund steht am Eintrag.",
         ],
       }),
     );
@@ -448,7 +465,7 @@ export function ledgerFromAnalysis(analysis, { boundaries = [] } = {}) {
     entries: [
       ...ownEntries,
       ...classEntries(analysis, claims),
-      ...boundaryEntries(boundaryList),
+      ...boundaryEntries(criterionGaps),
       ...omissionEntries(omitted),
     ],
   });

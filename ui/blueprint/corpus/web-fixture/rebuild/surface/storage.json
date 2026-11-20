@@ -1,0 +1,10 @@
+{
+  "schema": "rea.surface.storage",
+  "schema_version": 1,
+  "observed": false,
+  "cookies": [],
+  "local_storage": [],
+  "session_storage": [],
+  "source": "evidence/web-capture.json",
+  "why": "Die Vorlage hat in der Aufnahme keinen Speicherzustand hinterlassen; der Rebuild übernimmt diese Feststellung."
+}
