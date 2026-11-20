@@ -1,0 +1,34 @@
+{
+  "url": "https://shop.test/",
+  "final_url": "https://shop.test/",
+  "steps": [
+    {
+      "action": "goto",
+      "status": 200,
+      "artifacts": {
+        "dom": {
+          "state": "captured",
+          "value": {
+            "text": "<html lang=\"de\"><head><title>Shop</title></head><body><main><h1>Shop</h1><button id=\"buy\" type=\"button\">Kaufen</button><a href=\"/orders\">Bestellungen</a></main></body></html>"
+          }
+        }
+      }
+    }
+  ],
+  "events": {
+    "items": [
+      {
+        "kind": "request",
+        "transaction_id": "t1",
+        "method": "GET",
+        "url": "https://shop.test/api/orders",
+        "resource_type": "fetch"
+      },
+      {
+        "kind": "response",
+        "transaction_id": "t1",
+        "status": 200
+      }
+    ]
+  }
+}

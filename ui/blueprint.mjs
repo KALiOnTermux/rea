@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { analysisDigest, toAnalysis } from "./blueprint/analysis.mjs";
 import { COMPILER_ID, compile } from "./blueprint/compile.mjs";
@@ -3422,30 +3422,16 @@ export async function buildBlueprint(config) {
     throw new BlueprintGateError(secondGate);
   }
 
-  await writeFile(join(ctx.dir, "BLUEPRINT.md"), markdown, "utf8");
-  await writeFile(join(ctx.dir, "AGENT-PROMPT.md"), prompt, "utf8");
-  await writeFile(
-    join(ctx.dir, "blueprint.json"),
-    JSON.stringify(bp, null, 2),
-    "utf8",
-  );
+  // The directory is the package: every manifest entry is written here too, so a
+  // reader that verifies `result.dir` sees the same bytes as the zip. Writing only
+  // the documents left README.txt and the evidence files in the archive alone, and
+  // a manifest check against the directory then reported a mismatch that was real.
+  for (const [name, bytes] of Object.entries(packageFiles)) {
+    const full = join(ctx.dir, name);
+    await mkdir(dirname(full), { recursive: true });
+    await writeFile(full, bytes);
+  }
   await writeFile(join(ctx.dir, "MANIFEST.json"), manifestText, "utf8");
-  await writeFile(join(ctx.dir, "ledger.json"), ledgerText, "utf8");
-  await writeFile(join(ctx.dir, "acceptance.json"), acceptanceText, "utf8");
-  if (gateReportText) {
-    await writeFile(join(ctx.dir, "GATE-REPORT.json"), gateReportText, "utf8");
-  }
-  await mkdir(join(ctx.dir, "schemas"), { recursive: true });
-  for (const schema of ["claims", "ledger", "manifest"]) {
-    await writeFile(
-      join(ctx.dir, `schemas/${schema}.schema.json`),
-      await readFile(
-        new URL(`./blueprint/schemas/${schema}.schema.json`, import.meta.url),
-        "utf8",
-      ),
-      "utf8",
-    );
-  }
 
   progress(
     ctx,

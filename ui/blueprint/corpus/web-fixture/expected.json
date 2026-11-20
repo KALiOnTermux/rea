@@ -1,0 +1,6 @@
+{
+  "verdict": "pass",
+  "classification": {
+    "acceptance.web.evidence.surface/dom.html": "rebuild-defect"
+  }
+}
