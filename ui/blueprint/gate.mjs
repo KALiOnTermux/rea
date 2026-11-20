@@ -92,6 +92,138 @@ function reachesItself(start, byId) {
   return false;
 }
 
+function checkEvidence(claim, files, violations) {
+  const evidence = asArray(claim.evidence);
+  if (claim.kind === "observed" && evidence.length === 0) {
+    violations.push(
+      violation(
+        "claim.observed.without_evidence",
+        claim.id,
+        "an observed claim without an evidence reference is an assertion",
+      ),
+    );
+  }
+  for (const ref of evidence) {
+    if (!files.has(ref.path)) {
+      violations.push(
+        violation(
+          "claim.evidence.unresolved",
+          claim.id,
+          `evidence ${ref.path} is not part of the package`,
+        ),
+      );
+    }
+  }
+}
+
+function checkDerivation(claim, byId, violations) {
+  if (claim.kind !== "derived") return;
+  const derivation = claim.derivation;
+  if (
+    !derivation ||
+    !Array.isArray(derivation.inputs) ||
+    derivation.inputs.length === 0
+  ) {
+    violations.push(
+      violation(
+        "claim.derived.without_derivation",
+        claim.id,
+        "a derived claim needs a derivation with at least one input",
+      ),
+    );
+    return;
+  }
+  for (const input of derivation.inputs) {
+    if (!byId.has(input)) {
+      violations.push(
+        violation(
+          "claim.derived.forward_reference",
+          claim.id,
+          `derivation input ${input} does not exist before this claim`,
+        ),
+      );
+    }
+  }
+  if (reachesItself(claim.id, byId)) {
+    violations.push(
+      violation(
+        "claim.derived.forward_reference",
+        claim.id,
+        "the derivation chain returns to this claim, so it never reaches an observation",
+      ),
+    );
+  }
+}
+
+function checkAssumption(claim, violations) {
+  if (claim.kind !== "assumed") return;
+  const resolution = claim.assumption?.resolution;
+  if (typeof resolution !== "string" || resolution.trim() === "") {
+    violations.push(
+      violation(
+        "claim.assumed.without_resolution",
+        claim.id,
+        "an assumed claim needs assumption.resolution naming the probing check",
+      ),
+    );
+  }
+}
+
+function checkCeiling(claim, runCeiling, violations) {
+  if (
+    typeof runCeiling !== "string" ||
+    rank(claim.ceiling) <= rank(runCeiling)
+  ) {
+    return;
+  }
+  violations.push(
+    violation(
+      "claim.ceiling.exceeds_run",
+      claim.id,
+      `claim ceiling ${claim.ceiling} exceeds the run ceiling ${runCeiling}`,
+    ),
+  );
+}
+
+function checkFalsifier(claim, { checks, entries, ctx }, violations) {
+  const falsifier = claim.falsifier;
+  if (typeof falsifier !== "string" || falsifier.trim() === "") {
+    violations.push(
+      violation("claim.falsifier.missing", claim.id, "claim has no falsifier"),
+    );
+    return;
+  }
+  const isGap = falsifier.startsWith("gap:");
+  const resolves = isGap
+    ? entries.has(falsifier.slice(4))
+    : checks.has(falsifier);
+  if (!resolves) {
+    violations.push(
+      violation(
+        "claim.falsifier.missing",
+        claim.id,
+        `falsifier ${falsifier} resolves to nothing in the package`,
+      ),
+    );
+    return;
+  }
+  if (claim.kind !== "observed" || claim.ceiling !== "executed") return;
+  const check = isGap ? null : checks.get(falsifier);
+  const executable =
+    check !== null &&
+    checkIsExecutable(check, ctx) &&
+    RUNTIME_CHECK_KINDS.includes(check.kind);
+  if (!executable) {
+    violations.push(
+      violation(
+        "claim.falsifier.not_executable",
+        claim.id,
+        `falsifier ${falsifier} cannot falsify an executed observation`,
+      ),
+    );
+  }
+}
+
 function checkClaims({
   claims,
   blueprint,
@@ -107,136 +239,12 @@ function checkClaims({
   );
   const entries = new Set(asArray(ledger?.entries).map((entry) => entry.id));
   const runCeiling = blueprint?.ceiling?.ceiling;
-
   for (const claim of claims) {
-    const subject = claim.id;
-    const evidence = asArray(claim.evidence);
-
-    if (claim.kind === "observed" && evidence.length === 0) {
-      violations.push(
-        violation(
-          "claim.observed.without_evidence",
-          subject,
-          "an observed claim without an evidence reference is an assertion",
-        ),
-      );
-    }
-    for (const ref of evidence) {
-      if (!files.has(ref.path)) {
-        violations.push(
-          violation(
-            "claim.evidence.unresolved",
-            subject,
-            `evidence ${ref.path} is not part of the package`,
-          ),
-        );
-      }
-    }
-
-    if (claim.kind === "derived") {
-      const derivation = claim.derivation;
-      if (
-        !derivation ||
-        !Array.isArray(derivation.inputs) ||
-        derivation.inputs.length === 0
-      ) {
-        violations.push(
-          violation(
-            "claim.derived.without_derivation",
-            subject,
-            "a derived claim needs a derivation with at least one input",
-          ),
-        );
-      } else {
-        for (const input of derivation.inputs) {
-          if (!byId.has(input)) {
-            violations.push(
-              violation(
-                "claim.derived.forward_reference",
-                subject,
-                `derivation input ${input} does not exist before this claim`,
-              ),
-            );
-          }
-        }
-        if (reachesItself(subject, byId)) {
-          violations.push(
-            violation(
-              "claim.derived.forward_reference",
-              subject,
-              "the derivation chain returns to this claim, so it never reaches an observation",
-            ),
-          );
-        }
-      }
-    }
-
-    if (
-      claim.kind === "assumed" &&
-      (typeof claim.assumption?.resolution !== "string" ||
-        claim.assumption.resolution.trim() === "")
-    ) {
-      violations.push(
-        violation(
-          "claim.assumed.without_resolution",
-          subject,
-          "an assumed claim needs assumption.resolution naming the probing check",
-        ),
-      );
-    }
-
-    if (
-      typeof runCeiling === "string" &&
-      rank(claim.ceiling) > rank(runCeiling)
-    ) {
-      violations.push(
-        violation(
-          "claim.ceiling.exceeds_run",
-          subject,
-          `claim ceiling ${claim.ceiling} exceeds the run ceiling ${runCeiling}`,
-        ),
-      );
-    }
-
-    const falsifier = claim.falsifier;
-    if (typeof falsifier !== "string" || falsifier.trim() === "") {
-      violations.push(
-        violation("claim.falsifier.missing", subject, "claim has no falsifier"),
-      );
-      continue;
-    }
-    const isGap = falsifier.startsWith("gap:");
-    const resolves = isGap
-      ? entries.has(falsifier.slice(4))
-      : checks.has(falsifier);
-    if (!resolves) {
-      violations.push(
-        violation(
-          "claim.falsifier.missing",
-          subject,
-          `falsifier ${falsifier} resolves to nothing in the package`,
-        ),
-      );
-      continue;
-    }
-    const needsRuntime =
-      claim.kind === "observed" && claim.ceiling === "executed";
-    if (needsRuntime) {
-      const check = isGap ? null : checks.get(falsifier);
-      const executable =
-        check !== null &&
-        checkIsExecutable(check, ctx) &&
-        RUNTIME_CHECK_KINDS.includes(check.kind);
-      if (!executable) {
-        violations.push(
-          violation(
-            "claim.falsifier.not_executable",
-            subject,
-            `falsifier ${falsifier} cannot falsify an executed observation`,
-          ),
-        );
-      }
-    }
+    checkEvidence(claim, files, violations);
+    checkDerivation(claim, byId, violations);
+    checkAssumption(claim, violations);
+    checkCeiling(claim, runCeiling, violations);
+    checkFalsifier(claim, { checks, entries, ctx }, violations);
   }
 }
 

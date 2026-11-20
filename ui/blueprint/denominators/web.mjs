@@ -36,58 +36,57 @@ function routeItems(facts) {
   }));
 }
 
+function domItem(subject, selector) {
+  return {
+    subject,
+    source: { path: DOM_SOURCE, selector: { type: "dom", path: selector } },
+  };
+}
+
+function buttonItems(surface) {
+  return asArray(surface.buttons).map((button) =>
+    domItem(
+      button.id
+        ? `button#${button.id}`
+        : `button:${button.label || button.text || "ohne Text"}`,
+      button.id ? `#${button.id}` : `button:${button.label || ""}`,
+    ),
+  );
+}
+
+function inputItems(surface) {
+  return asArray(surface.inputs).map((input) => {
+    const selector = `${input.tag || "input"}${input.name ? `[name=${input.name}]` : ""}`;
+    return domItem(
+      `<${input.tag || "input"}>${input.name ? `[name=${input.name}]` : ""}`,
+      selector,
+    );
+  });
+}
+
+function formItems(surface) {
+  return asArray(surface.forms).map((form) =>
+    domItem(
+      `form:${String(form.method || "get").toLowerCase()} ${form.action || "current"}`,
+      `form[action="${form.action || ""}"]`,
+    ),
+  );
+}
+
+function linkItems(surface) {
+  return asArray(surface.links).map((link) =>
+    domItem(`link:${link.href || ""}`, `a[href="${link.href || ""}"]`),
+  );
+}
+
 function domItems(facts) {
   const surface = facts?.surface ?? {};
-  const items = [];
-  for (const button of asArray(surface.buttons)) {
-    const subject = button.id
-      ? `button#${button.id}`
-      : `button:${button.label || button.text || "ohne Text"}`;
-    items.push({
-      subject,
-      source: {
-        path: DOM_SOURCE,
-        selector: {
-          type: "dom",
-          path: button.id ? `#${button.id}` : `button:${button.label || ""}`,
-        },
-      },
-    });
-  }
-  for (const input of asArray(surface.inputs)) {
-    items.push({
-      subject: `<${input.tag || "input"}>${input.name ? `[name=${input.name}]` : ""}`,
-      source: {
-        path: DOM_SOURCE,
-        selector: {
-          type: "dom",
-          path: `${input.tag || "input"}${input.name ? `[name=${input.name}]` : ""}`,
-        },
-      },
-    });
-  }
-  for (const form of asArray(surface.forms)) {
-    items.push({
-      subject: `form:${String(form.method || "get").toLowerCase()} ${form.action || "current"}`,
-      source: {
-        path: DOM_SOURCE,
-        selector: {
-          type: "dom",
-          path: `form[action="${form.action || ""}"]`,
-        },
-      },
-    });
-  }
-  for (const link of asArray(surface.links)) {
-    items.push({
-      subject: `link:${link.href || ""}`,
-      source: {
-        path: DOM_SOURCE,
-        selector: { type: "dom", path: `a[href="${link.href || ""}"]` },
-      },
-    });
-  }
-  return items;
+  return [
+    ...buttonItems(surface),
+    ...inputItems(surface),
+    ...formItems(surface),
+    ...linkItems(surface),
+  ];
 }
 
 function requestItems(facts) {
