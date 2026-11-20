@@ -101,25 +101,18 @@ function readJson(root, name) {
 }
 
 /**
- * Verifies the package, runs its acceptance checks against `rebuild`, and
- * returns the rebuild report. Nothing here writes the report; the CLI does.
+ * Verifies the package and returns its IR and acceptance file.
+ *
+ * `verifyManifest` reads synchronously, so the declared files are read first; a
+ * missing or edited file then shows up as a hash mismatch instead of an exception
+ * somewhere in the middle of the comparison.
  */
-export async function runFidelity({
-  package: packagePath,
-  rebuild,
-  expectations = {},
-  request,
-  harness,
-} = {}) {
-  if (typeof rebuild !== "string" || rebuild === "") {
-    throw new FidelityError("runFidelity needs a rebuild directory");
-  }
+async function loadVerifiedPackage(packagePath) {
   const root = await packageRoot(packagePath);
   const manifest = await readJson(root, "MANIFEST.json");
   if (!manifest) {
     throw new FidelityError(`package ${root} has no manifest (MANIFEST.json)`);
   }
-  // `verifyManifest` reads synchronously, so the declared files are read first.
   const contents = new Map();
   for (const entry of Array.isArray(manifest.files) ? manifest.files : []) {
     const full = join(root, String(entry?.path ?? ""));
@@ -147,30 +140,25 @@ export async function runFidelity({
   if (!acceptance) {
     throw new FidelityError(`package ${root} has no acceptance.json`);
   }
+  return { blueprint, acceptance };
+}
 
-  const result = await runAcceptance({
-    file: acceptance,
-    root: rebuild,
-    request,
-    harness,
+/** Only a failed criterion carries a classification; a pass needs no excuse. */
+function classify(verdicts, expectations) {
+  const declared = expectations?.classification ?? {};
+  return verdicts.map((item) => {
+    if (item.status !== "failed") return item;
+    const marked = CLASSIFICATIONS.find((value) => value === declared[item.id]);
+    return { ...item, classification: marked ?? "blueprint-defect" };
   });
-  const classification = expectations?.classification ?? {};
-  const criteria = result.verdicts.map((item) =>
-    item.status === "failed"
-      ? {
-          ...item,
-          classification:
-            CLASSIFICATIONS.find(
-              (value) => value === classification[item.id],
-            ) ?? "blueprint-defect",
-        }
-      : item,
-  );
+}
+
+function buildReport(blueprint, result, expectations) {
   return {
     schema: REPORT_SCHEMA,
     schema_version: REPORT_SCHEMA_VERSION,
     package: { id: blueprint.id, ceiling: blueprint.ceiling?.ceiling ?? null },
-    criteria,
+    criteria: classify(result.verdicts, expectations),
     summary: {
       passed: result.passed,
       failed: result.failed,
@@ -179,4 +167,28 @@ export async function runFidelity({
     },
     verdict: result.failed === 0 && result.unexecutable === 0 ? "pass" : "fail",
   };
+}
+
+/**
+ * Verifies the package, runs its acceptance checks against `rebuild`, and
+ * returns the rebuild report. Nothing here writes the report; the CLI does.
+ */
+export async function runFidelity({
+  package: packagePath,
+  rebuild,
+  expectations = {},
+  request,
+  harness,
+} = {}) {
+  if (typeof rebuild !== "string" || rebuild === "") {
+    throw new FidelityError("runFidelity needs a rebuild directory");
+  }
+  const { blueprint, acceptance } = await loadVerifiedPackage(packagePath);
+  const result = await runAcceptance({
+    file: acceptance,
+    root: rebuild,
+    request,
+    harness,
+  });
+  return buildReport(blueprint, result, expectations);
 }
