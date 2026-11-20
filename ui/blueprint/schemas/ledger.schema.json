@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rea.local/schema/blueprint/ledger.schema.json",
+  "title": "Blueprint closure ledger",
+  "description": "The declared denominator and its accounted items (spec §6, R5). Every enumerated item gets exactly one entry; closure.ratio derives from covered and gap only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "ceiling",
+    "denominators",
+    "entries",
+    "closure"
+  ],
+  "properties": {
+    "schema": { "type": "string", "const": "rea.blueprint.ledger" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "ceiling": {
+      "type": "string",
+      "enum": ["executed", "statically-evidenced", "inferred-only"]
+    },
+    "denominators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class", "probe", "items", "blind_spots"],
+        "properties": {
+          "class": { "type": "string", "minLength": 1 },
+          "probe": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+          },
+          "items": { "type": "integer", "minimum": 0 },
+          "blind_spots": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "class", "status", "claims"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "class": { "type": "string", "minLength": 1 },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)[^\\\\]*$"
+              },
+              "selector": { "type": "object", "minProperties": 1 }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["covered", "gap", "out_of_scope"]
+          },
+          "claims": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "gap": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "why", "action", "blocking"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "why": { "type": "string", "minLength": 1 },
+              "action": { "type": "string", "minLength": 1 },
+              "blocking": { "type": "boolean" }
+            }
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["covered", "gap", "out_of_scope", "ratio"],
+      "properties": {
+        "covered": { "type": "integer", "minimum": 0 },
+        "gap": { "type": "integer", "minimum": 0 },
+        "out_of_scope": { "type": "integer", "minimum": 0 },
+        "ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

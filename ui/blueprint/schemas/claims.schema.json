@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rea.local/schema/blueprint/claims.schema.json",
+  "title": "Blueprint claim record",
+  "description": "One typed assertion of a blueprint package (spec §5). Every claim names its kind, its ceiling, an evidence reference and a falsifier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "statement", "kind", "ceiling", "evidence", "falsifier"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "statement": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["observed", "derived", "assumed"] },
+    "ceiling": {
+      "type": "string",
+      "enum": ["executed", "statically-evidenced", "inferred-only"]
+    },
+    "subject": { "type": "string", "minLength": 1 },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^\\\\]*$"
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "selector": { "type": "object", "minProperties": 1 }
+        }
+      }
+    },
+    "falsifier": { "type": "string", "minLength": 1 },
+    "limits": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "inputs"],
+      "properties": {
+        "rule": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "impact", "resolution"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "impact": { "type": "string", "minLength": 1 },
+        "resolution": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

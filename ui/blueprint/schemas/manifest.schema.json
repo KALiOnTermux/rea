@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rea.local/schema/blueprint/manifest.schema.json",
+  "title": "Blueprint package manifest",
+  "description": "The tamper-evident file list of a blueprint package (R10). produced_at is recorded but never part of a digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "ceiling",
+    "compiler",
+    "produced_at",
+    "digests",
+    "files"
+  ],
+  "properties": {
+    "schema": { "type": "string", "const": "rea.blueprint.manifest" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "ceiling": {
+      "type": "string",
+      "enum": ["executed", "statically-evidenced", "inferred-only"]
+    },
+    "compiler": { "type": "string", "minLength": 1 },
+    "analysis_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "produced_at": { "type": "string", "format": "date-time" },
+    "digests": {
+      "type": "object",
+      "required": ["package"],
+      "properties": {
+        "package": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "blueprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "bytes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)[^\\\\]*$"
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
