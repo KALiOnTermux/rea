@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { verifyManifest } from "./manifest.mjs";
 import { runAcceptance } from "./run-acceptance.mjs";
+import { transcriptClientFromPackage } from "./transcript-client.mjs";
 
 export const REPORT_SCHEMA = "rea.blueprint.rebuild-report";
 export const REPORT_SCHEMA_VERSION = 1;
@@ -184,10 +185,18 @@ export async function runFidelity({
     throw new FidelityError("runFidelity needs a rebuild directory");
   }
   const { blueprint, acceptance } = await loadVerifiedPackage(packagePath);
+  // HTTP checks describe requests the capture really made; answering them from
+  // the package's transcript is what makes those checks executable instead of
+  // skipped.
+  const client =
+    request ??
+    (await transcriptClientFromPackage(
+      typeof packagePath === "string" ? packagePath : "",
+    ));
   const result = await runAcceptance({
     file: acceptance,
     root: rebuild,
-    request,
+    request: client,
     harness,
   });
   return buildReport(blueprint, result, expectations);

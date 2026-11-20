@@ -3320,6 +3320,13 @@ export async function buildBlueprint(config) {
     ],
     omitted: [...(ctx.bundle.omitted ?? [])],
   });
+  bp.gate = {
+    ok: firstGate.ok,
+    status: firstGate.status,
+    coverage: firstGate.coverage,
+    violations: firstGate.violations.length,
+  };
+  bp.closure = ledger.closure;
   bp.completeness = projectCompleteness(probe, firstGate);
   bp.coverage.status = coverageStatus(firstGate);
   bp.coverage.ratio = ledger.closure.ratio;

@@ -16,6 +16,7 @@
  */
 
 import { buildAcceptance } from "./acceptance.mjs";
+import { criteriaChecks } from "./criteria.mjs";
 
 function compareStrings(left, right) {
   if (left < right) return -1;
@@ -55,10 +56,20 @@ function entryForClaim(entries, claimId) {
  * Emits the acceptance file and rewrites each claim's falsifier to the check that
  * now falsifies it, so a claim and its test always name each other.
  */
-export function emitAcceptance({ claims, ledger } = {}) {
+export function emitAcceptance({
+  claims,
+  ledger,
+  criteria,
+  facts,
+  targetClass,
+  declared,
+} = {}) {
   const list = Array.isArray(claims) ? claims : [];
   const entries = Array.isArray(ledger?.entries) ? ledger.entries : [];
-  const checks = [];
+  const resolved =
+    declared ??
+    criteriaChecks(criteria, facts, { targetClass: targetClass ?? "web" });
+  const checks = [...resolved.checks];
   const rewritten = [];
 
   for (const claim of list) {
@@ -79,6 +90,12 @@ export function emitAcceptance({ claims, ledger } = {}) {
   }
 
   const acceptance = buildAcceptance({ checks });
+  // Only a criterion with a check stays an acceptance criterion; the rest is
+  // reported as an open boundary by the caller, never dropped.
+  const built = new Set(resolved.checks.map((check) => check.criterion));
+  const criteriaWithChecks = (Array.isArray(criteria) ? criteria : []).filter(
+    (criterion) => built.has(criterion),
+  );
   const ids = new Set(acceptance.checks.map((check) => check.id));
   const missing = [];
   for (const claim of rewritten) {
@@ -96,5 +113,12 @@ export function emitAcceptance({ claims, ledger } = {}) {
     }
   }
   missing.sort((left, right) => compareStrings(left.claim, right.claim));
-  return { acceptance, claims: rewritten, missing };
+  return {
+    acceptance,
+    claims: rewritten,
+    missing,
+    boundaries: resolved.boundaries,
+    unmapped: resolved.unmapped,
+    criteria: criteriaWithChecks,
+  };
 }

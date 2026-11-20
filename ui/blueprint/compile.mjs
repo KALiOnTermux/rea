@@ -19,6 +19,7 @@
 
 import { createHash } from "node:crypto";
 import { emitAcceptance } from "./acceptance-emit.mjs";
+import { criteriaChecks } from "./criteria.mjs";
 import { analysisDigest, canonicalJson } from "./analysis.mjs";
 import { assertUniqueClaimIds, sortClaims } from "./claims.mjs";
 import { ledgerFromAnalysis } from "./ledger.mjs";
@@ -73,15 +74,30 @@ function blueprintFrom(analysis, digest, claims) {
  */
 export function compile(analysis) {
   const digest = analysisDigest(analysis);
-  const ledger = ledgerFromAnalysis(analysis);
+  const declared = criteriaChecks(
+    analysis.facts?.acceptance ?? [],
+    analysis.facts,
+    { targetClass: analysis.target?.kind ?? "web" },
+  );
+  const ledger = ledgerFromAnalysis(analysis, {
+    boundaries: declared.boundaries,
+  });
   const emitted = emitAcceptance({
     claims: sortClaims(analysis.claims ?? []),
     ledger,
+    criteria: analysis.facts?.acceptance ?? [],
+    facts: analysis.facts,
+    targetClass: analysis.target?.kind ?? "web",
+    declared,
   });
   const claims = sortClaims(emitted.claims);
   assertUniqueClaimIds(claims);
 
   const blueprint = blueprintFrom(analysis, digest, claims);
+  // A declared criterion stays an acceptance criterion only when it got a check;
+  // the rest is an explicit open boundary, recorded next to the package.
+  blueprint.acceptance = emitted.criteria ?? blueprint.acceptance;
+  blueprint.boundaries = emitted.boundaries ?? [];
   blueprint.coverage.ratio = ledger.closure.ratio;
   blueprint.coverage.status =
     ledger.closure.ratio === 1

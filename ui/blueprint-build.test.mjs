@@ -33,10 +33,25 @@ const CAPTURE = {
   events: {
     items: [
       {
-        kind: "network",
+        kind: "request",
+        transaction_id: "t1",
+        sequence: 1,
         method: "POST",
-        url: "https://shop.test/api/orders",
+        url: {
+          url: "https://shop.test/api/orders",
+          origin: "https://shop.test",
+        },
+        resource_type: "fetch",
+      },
+      {
+        kind: "response",
+        transaction_id: "t1",
+        sequence: 2,
         status: 201,
+        url: {
+          url: "https://shop.test/api/orders",
+          origin: "https://shop.test",
+        },
         resource_type: "fetch",
       },
     ],

@@ -75,6 +75,8 @@ function normaliseCheck(raw, index) {
     "allowed",
     "argv",
     "paths",
+    "selectors",
+    "requests",
   ]) {
     if (raw[field] !== undefined) check[field] = raw[field];
   }

@@ -134,6 +134,16 @@ export function renderMarkdown(compiled) {
     );
     for (const reason of bp.ceiling?.downgraded_by ?? [])
       add(`- **Herabgesetzt:** \`${reason}\``);
+    if (bp.gate) {
+      add(
+        `- **Gate:** ${bp.gate.ok ? "pass" : "fail"} · ${bp.gate.status} · ${bp.gate.violations} Verletzung(en) · Coverage ${bp.gate.coverage}`,
+      );
+    }
+    if (bp.closure) {
+      add(
+        `- **Closure:** ${bp.closure.covered} covered, ${bp.closure.gap} gap, ${bp.closure.out_of_scope} out_of_scope · Nenner ${bp.closure.covered + bp.closure.gap + bp.closure.out_of_scope} · Ratio ${bp.closure.ratio}`,
+      );
+    }
     add(
       `- **Belegt:** ${bp.coverage.available.join(", ") || "keine Kerndaten"}`,
     );
@@ -957,12 +967,19 @@ export function renderMarkdown(compiled) {
         );
       }
     }
+    for (const boundary of bp.boundaries ?? []) {
+      add(`| ${cell(boundary.criterion)} | offene Grenze | — | — |`);
+    }
     add("");
     add(
       missing > 0
         ? `${missing} Kriterium/Kriterien ohne Prüfung; das blockiert \`complete\`.`
         : "Jedes Kriterium hat eine ausführbare Prüfung.",
     );
+    for (const boundary of bp.boundaries ?? []) {
+      add("");
+      add(`- **Offene Grenze:** ${boundary.criterion} — ${boundary.why}`);
+    }
   });
 
   section("9. Offene Punkte", () => {

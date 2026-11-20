@@ -347,6 +347,28 @@ function classEntries(analysis, claims) {
   return [];
 }
 
+/** One gap per declared criterion that has no check in this run. */
+function boundaryEntries(boundaries) {
+  return boundaries.map((boundary) => {
+    const id = `criterion:${boundary.criterion}`;
+    return {
+      id,
+      class: "criterion",
+      subject: boundary.criterion,
+      source: { path: "acceptance.json", selector: { type: "whole" } },
+      status: "gap",
+      claims: [],
+      gap: {
+        id,
+        why: boundary.why,
+        action:
+          "Beleg für dieses Kriterium aufnehmen und einen ausführbaren Check daraus ableiten.",
+        blocking: false,
+      },
+    };
+  });
+}
+
 /**
  * Files the bundle caps dropped (spec §6): a truncated source or evidence tree
  * must not let the package look closed, so each omission is a blocking gap.
@@ -377,7 +399,7 @@ function omissionEntries(omitted) {
  * enumerates itself: routes and DOM for web, symbols and exit paths for source,
  * screens and assets for an APK.
  */
-export function ledgerFromAnalysis(analysis) {
+export function ledgerFromAnalysis(analysis, { boundaries = [] } = {}) {
   const ownEntries = Array.isArray(analysis?.ledger) ? analysis.ledger : [];
   const claims = Array.isArray(analysis?.claims) ? analysis.claims : [];
   const targetClass = String(analysis?.target?.kind ?? "target")
@@ -393,6 +415,21 @@ export function ledgerFromAnalysis(analysis) {
     ),
     ...enumerated,
   ];
+  // A declared criterion without a check is an open boundary, not a missing
+  // line: it stays in the ledger as a gap that names why it cannot be tested.
+  const boundaryList = Array.isArray(boundaries) ? boundaries : [];
+  if (boundaryList.length > 0) {
+    denominators.push(
+      denominator({
+        class: "criterion",
+        probe: `${targetClass}.criterion-boundaries`,
+        items: boundaryList.length,
+        blind_spots: [
+          "Diese Kriterien haben in diesem Lauf keinen ausführbaren Check; sie bleiben als offene Grenze stehen.",
+        ],
+      }),
+    );
+  }
   if (omitted.length > 0) {
     denominators.push(
       denominator({
@@ -411,6 +448,7 @@ export function ledgerFromAnalysis(analysis) {
     entries: [
       ...ownEntries,
       ...classEntries(analysis, claims),
+      ...boundaryEntries(boundaryList),
       ...omissionEntries(omitted),
     ],
   });

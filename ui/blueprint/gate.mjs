@@ -318,7 +318,18 @@ function checkLedger({ ledger, claims, ctx, violations }) {
 
 function checkAcceptance({ blueprint, acceptance, ctx, violations }) {
   const checks = asArray(acceptance?.checks);
-  for (const criterion of asArray(blueprint?.acceptance)) {
+  const declared = asArray(blueprint?.acceptance);
+  if (declared.length === 0) {
+    violations.push(
+      violation(
+        "acceptance.criterion.missing",
+        "package",
+        "the package declares no acceptance criterion it can check",
+      ),
+    );
+    return;
+  }
+  for (const criterion of declared) {
     const matching = checks.filter((check) => check.criterion === criterion);
     if (matching.length === 0) {
       violations.push(

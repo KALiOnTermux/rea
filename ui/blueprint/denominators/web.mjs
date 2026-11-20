@@ -38,15 +38,73 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+/**
+ * Routes the run can name: statically found routes plus the targets the capture
+ * actually visited. Without the second source a capture-only run would declare a
+ * route denominator of zero although its steps name every page it loaded.
+ */
 function routeItems(facts) {
-  return asArray(facts?.internals?.routes).map((route, index) => ({
-    subject: `${route.method || "GET"} ${route.path || route.pattern || route.route || index}`,
-    pointer: `/routes/${index}`,
-    source: {
-      path: ROUTE_SOURCE,
-      selector: { type: "pointer", pointer: `/routes/${index}` },
-    },
-  }));
+  const staticRoutes = asArray(facts?.internals?.routes).map(
+    (route, index) => ({
+      subject: `${route.method || "GET"} ${route.path || route.pattern || route.route || index}`,
+      pointer: `/routes/${index}`,
+      source: {
+        path: ROUTE_SOURCE,
+        selector: { type: "pointer", pointer: `/routes/${index}` },
+      },
+    }),
+  );
+  const navigation = asArray(facts?.behavior?.navigation).map(
+    (entry, index) => ({
+      subject: `GET ${entry.url || index}`,
+      pointer: `/behavior/navigation/${index}`,
+      source: {
+        path: CAPTURE_SOURCE,
+        selector: {
+          type: "pointer",
+          pointer: `/behavior/navigation/${index}`,
+        },
+      },
+    }),
+  );
+  const steps = asArray(facts?.behavior?.steps)
+    .map((step, index) =>
+      step?.after_url
+        ? {
+            subject: `GET ${step.after_url}`,
+            pointer: `/behavior/steps/${index}/after_url`,
+            source: {
+              path: CAPTURE_SOURCE,
+              selector: {
+                type: "pointer",
+                pointer: `/behavior/steps/${index}/after_url`,
+              },
+            },
+          }
+        : null,
+    )
+    .filter(Boolean);
+  // The captured start and landing URL are routes the run really loaded, so a
+  // capture without navigation still names at least the page it was taken on.
+  const pages = [
+    ["/surface/url", facts?.surface?.url],
+    ["/surface/final_url", facts?.surface?.final_url],
+  ]
+    .filter(([, url]) => url)
+    .map(([pointer, url]) => ({
+      subject: `GET ${url}`,
+      pointer,
+      source: {
+        path: DOM_SOURCE,
+        selector: { type: "pointer", pointer },
+      },
+    }));
+  const seen = new Set();
+  return [...staticRoutes, ...pages, ...navigation, ...steps].filter((item) => {
+    if (seen.has(item.subject)) return false;
+    seen.add(item.subject);
+    return true;
+  });
 }
 
 /** One DOM item; `pointer` is the claim subject, the selector names the node. */
@@ -194,16 +252,47 @@ export function webDomItems(facts) {
   return domItems(facts ?? {});
 }
 
+/**
+ * Why a class has nothing to enumerate in this capture.
+ *
+ * A zero denominator is not "covered"; the class is recorded as `out_of_scope`
+ * with this reason so the package says why it has no items instead of dividing
+ * by zero or pretending the class does not exist.
+ */
+const EMPTY_REASON = {
+  asset:
+    "Die Aufnahme referenziert keine Asset-Knoten (img, script, link); eine Aufnahme mit Assets füllt diesen Nenner.",
+  "dom-node":
+    "Die Aufnahme enthält keinen interaktiven DOM-Knoten; eine Aufnahme mit Bedienelementen füllt diesen Nenner.",
+  request:
+    "Die Aufnahme enthält keinen Netzwerk-Request; eine Aufnahme mit Requests füllt diesen Nenner.",
+  route:
+    "Die Aufnahme nennt weder eine Navigation noch eine statische Route; eine Aufnahme mit Seitenaufrufen füllt diesen Nenner.",
+};
+
+const CLASS_SOURCE = {
+  asset: DOM_SOURCE,
+  "dom-node": DOM_SOURCE,
+  request: CAPTURE_SOURCE,
+  route: ROUTE_SOURCE,
+};
+
 /** Denominators per class, sorted, with the probe that enumerated them. */
 export function webDenominators(analysis) {
   return Object.keys(ENUMERATORS)
     .sort(compareStrings)
-    .map((cls) => ({
-      class: cls,
-      probe: `web.${cls}-scan`,
-      items: enumerate(analysis, cls).length,
-      blind_spots: [...BLIND_SPOTS[cls]],
-    }));
+    .map((cls) => {
+      const items = enumerate(analysis, cls).length;
+      return {
+        class: cls,
+        probe: `web.${cls}-scan`,
+        items: items === 0 ? 1 : items,
+        blind_spots:
+          items === 0
+            ? [...BLIND_SPOTS[cls], EMPTY_REASON[cls]]
+            : [...BLIND_SPOTS[cls]],
+      };
+    });
 }
 
 function coveredBy(item, claims) {
@@ -226,7 +315,30 @@ function coveredBy(item, claims) {
 export function webEntries(analysis, claims = []) {
   const entries = [];
   for (const cls of Object.keys(ENUMERATORS).sort(compareStrings)) {
-    for (const item of enumerate(analysis, cls)) {
+    const items = enumerate(analysis, cls);
+    if (items.length === 0) {
+      // A class the capture cannot enumerate is recorded as a typed gap with its
+      // reason, so the denominator stays measurable instead of being zero and
+      // the package says why nothing could be counted.
+      const id = `${cls}:keine Beobachtung`;
+      entries.push({
+        id,
+        class: cls,
+        subject: "keine Beobachtung",
+        source: { path: CLASS_SOURCE[cls], selector: { type: "whole" } },
+        status: "gap",
+        claims: [],
+        gap: {
+          id,
+          why: EMPTY_REASON[cls],
+          action:
+            "Eine Aufnahme mit diesem Knotentyp erheben und den Nenner daraus füllen.",
+          blocking: false,
+        },
+      });
+      continue;
+    }
+    for (const item of items) {
       const matches = coveredBy(item, claims);
       const id = `${cls}:${item.subject}`;
       if (matches.length > 0) {

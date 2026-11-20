@@ -61,6 +61,24 @@ function verdict(check, status, detail, reason) {
   return result;
 }
 
+/** `{status}` or `{statusClass}`; a class of 2 means any 2xx answer. */
+function statusMismatch(actual, expect) {
+  if (Number.isInteger(expect?.status)) {
+    return actual?.status === expect.status
+      ? null
+      : `Status ${actual?.status ?? "keine Antwort"} statt ${expect.status}`;
+  }
+  if (Number.isInteger(expect?.statusClass)) {
+    const actualClass = Number.isInteger(actual?.status)
+      ? Math.floor(actual.status / 100)
+      : null;
+    return actualClass === expect.statusClass
+      ? null
+      : `Statusklasse ${actualClass ?? "keine Antwort"} statt ${expect.statusClass}xx`;
+  }
+  return null;
+}
+
 async function runHttp(check, request) {
   if (typeof request !== "function") {
     return verdict(
@@ -70,24 +88,32 @@ async function runHttp(check, request) {
       "requires:http-client",
     );
   }
-  try {
-    const actual = await request({ ...check.request, fixture: check.fixture });
-    const expected = check.expect?.status;
-    if (Number.isInteger(expected) && actual?.status !== expected) {
-      return verdict(
-        check,
-        "failed",
-        `Status ${actual?.status ?? "keine Antwort"} statt ${expected}`,
+  const targets = Array.isArray(check.requests)
+    ? check.requests
+    : [{ ...check.request, expect: check.expect }];
+  const failures = [];
+  for (const [index, target] of targets.entries()) {
+    try {
+      const actual = await request({ ...target, fixture: check.fixture });
+      const mismatch = statusMismatch(actual, target.expect);
+      if (mismatch) {
+        failures.push(
+          `${target.url ?? target.selector?.index ?? index}: ${mismatch}`,
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `${target.url ?? target.selector?.index ?? index}: ${error?.message ?? error}`,
       );
     }
-    return verdict(check, "passed", `Status ${actual?.status ?? "unbekannt"}`);
-  } catch (error) {
-    return verdict(
-      check,
-      "failed",
-      `Anfrage fehlgeschlagen: ${error?.message ?? error}`,
-    );
   }
+  return verdict(
+    check,
+    failures.length === 0 ? "passed" : "failed",
+    failures.length === 0
+      ? `${targets.length} Anfrage(n) bestätigt`
+      : failures.join("; "),
+  );
 }
 
 async function runDom(check, root) {
@@ -98,13 +124,18 @@ async function runDom(check, root) {
   } catch {
     return verdict(check, "failed", `${fixture} fehlt im Rebuild`);
   }
-  const found = matchesSelector(html, check.selector);
+  const paths = Array.isArray(check.selectors)
+    ? check.selectors
+    : [check.selector?.path];
+  const missing = paths.filter(
+    (path) => !matchesSelector(html, { type: "dom", path }),
+  );
   return verdict(
     check,
-    found ? "passed" : "failed",
-    found
-      ? `${check.selector?.path} gefunden`
-      : `${check.selector?.path} fehlt in ${fixture}`,
+    missing.length === 0 ? "passed" : "failed",
+    missing.length === 0
+      ? `${paths.length} Selektor(en) gefunden`
+      : `fehlt in ${fixture}: ${missing.join(", ")}`,
   );
 }
 

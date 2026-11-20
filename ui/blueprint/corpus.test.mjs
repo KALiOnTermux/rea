@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 import { buildBlueprint } from "../blueprint.mjs";
 import { runFidelity } from "./fidelity.mjs";
+import { runAcceptance } from "./run-acceptance.mjs";
+import { transcriptClient } from "./transcript-client.mjs";
 
 const FIXTURE = fileURLToPath(
   new URL("./corpus/web-fixture/", import.meta.url),
@@ -20,7 +22,6 @@ async function buildCase() {
     artifactsDir,
     includeSources: false,
     reaVersion: "corpus",
-    allowIncomplete: true,
     onProgress: () => {},
   });
   const rebuild = await mkdtemp(join(tmpdir(), "rea-corpus-rebuild-"));
@@ -80,4 +81,62 @@ test("deleting one rebuild file flips the verdict but keeps the classification",
   const failed = report.criteria.find((item) => item.id === domCheck.id);
   assert.equal(failed.status, "failed");
   assert.equal(failed.classification, "rebuild-defect");
+});
+
+test("the corpus package passes the gate without allowIncomplete", async () => {
+  const { result } = await buildCase();
+  assert.deepEqual(result.violations, []);
+  assert.equal(result.blueprint.gate.ok, true);
+  assert.equal(result.blueprint.closure.covered > 0, true);
+  assert.equal(result.blueprint.gate.coverage, result.blueprint.closure.ratio);
+  for (const denominator of result.ledger.denominators) {
+    assert.equal(denominator.items > 0, true, denominator.class);
+  }
+});
+
+test("an http check goes red when the transcript disagrees", async () => {
+  const { rebuild, acceptance } = await buildCase();
+  const capture = JSON.parse(
+    await readFile(join(FIXTURE, "blueprint", "capture.json"), "utf8"),
+  );
+  const api = acceptance.checks.find(
+    (check) => check.kind === "http" && check.requests?.length > 0,
+  );
+  assert.equal(Boolean(api), true, "corpus needs a request-level http check");
+
+  const green = await runAcceptance({
+    file: acceptance,
+    root: rebuild,
+    request: transcriptClient(capture),
+  });
+  assert.equal(
+    green.verdicts.find((verdict) => verdict.id === api.id).status,
+    "passed",
+  );
+
+  const tampered = structuredClone(capture);
+  for (const item of tampered.events.items) {
+    if (item.kind === "response") item.status = 500;
+  }
+  const red = await runAcceptance({
+    file: acceptance,
+    root: rebuild,
+    request: transcriptClient(tampered),
+  });
+  const verdict = red.verdicts.find((item) => item.id === api.id);
+  assert.equal(verdict.status, "failed");
+  assert.equal(
+    verdict.detail.includes("500") || verdict.detail.includes("2"),
+    true,
+  );
+
+  const blind = await runAcceptance({
+    file: acceptance,
+    root: rebuild,
+    request: transcriptClient({ steps: [], events: { items: [] } }),
+  });
+  assert.equal(
+    blind.verdicts.find((item) => item.id === api.id).status,
+    "failed",
+  );
 });

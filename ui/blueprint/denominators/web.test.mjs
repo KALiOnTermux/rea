@@ -86,11 +86,41 @@ test("counts come from the analysis facts, never from a completeness report", ()
   const empty = analysis({
     facts: { surface: {}, behavior: {}, internals: {} },
   });
+  // A class the capture cannot enumerate keeps a measurable denominator of one
+  // and names the reason, so no type ever divides by zero.
   assert.deepEqual(
     webDenominators(empty).map((item) => item.items),
-    [0, 0, 0, 0],
+    [1, 1, 1, 1],
   );
   assert.equal(webDenominators(empty)[0].blind_spots.length > 0, true);
+  const placeholders = webEntries(empty, []);
+  assert.equal(placeholders.length, 4);
+  for (const entry of placeholders) {
+    assert.equal(entry.status, "gap");
+    assert.equal(entry.subject, "keine Beobachtung");
+    assert.equal(entry.gap.blocking, false);
+    assert.equal(entry.gap.why.length > 0, true);
+  }
+});
+
+test("routes come from the capture's navigation when no static route exists", () => {
+  const facts = {
+    surface: { url: "https://shop.test/" },
+    behavior: {
+      steps: [
+        { after_url: "https://shop.test/" },
+        { after_url: "https://shop.test/orders" },
+      ],
+    },
+    internals: {},
+  };
+  const routes = webEntries(analysis({ facts }), []).filter(
+    (entry) => entry.class === "route",
+  );
+  assert.deepEqual(routes.map((entry) => entry.subject).sort(), [
+    "GET https://shop.test/",
+    "GET https://shop.test/orders",
+  ]);
 });
 
 test("every enumerated item becomes one ledger entry that is a gap by default", () => {
