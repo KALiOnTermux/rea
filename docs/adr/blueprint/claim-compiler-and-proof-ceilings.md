@@ -1,6 +1,6 @@
 # Claim compiler and per-class proof ceilings
 
-**Status:** proposed
+**Status:** accepted
 
 ## Context
 

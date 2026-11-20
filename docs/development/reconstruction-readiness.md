@@ -30,6 +30,17 @@ REA_READINESS_REPORT_PATH=readiness-report.json npm run verify:readiness
 CI runs this command on Linux, publishes the compact summary, and retains the
 full report as the `reconstruction-readiness` artifact.
 
+## Exported blueprint packages
+
+A different contract covers the blueprint package that REA Studio exports:
+typed claims with evidence selectors, a closure ledger with a fixed denominator
+per target class, a fail-closed gate and a declared proof ceiling. It is defined
+in [`docs/specs/blueprint/claim-compiler/spec.md`](../specs/blueprint/claim-compiler/spec.md)
+and decided in
+[`docs/adr/blueprint/claim-compiler-and-proof-ceilings.md`](../adr/blueprint/claim-compiler-and-proof-ceilings.md).
+The verifier above does not evaluate those packages, and a closed ledger is not
+reconstruction readiness.
+
 ## Report scope and ownership
 
 The verifier runs as `npm run verify:readiness`; it is not exposed as a public

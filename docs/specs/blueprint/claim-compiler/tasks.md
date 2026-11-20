@@ -349,30 +349,30 @@ try {
 
 **Files:** create `ui/blueprint/denominators/source.mjs`, `ui/blueprint/denominators/source.test.mjs`
 
-- [ ] **Step 1: Failing test** — a source analysis yields denominators `exported-symbol`, `route`, `exit-path` with exact counts from the fixture and a blind spot naming dynamic imports; with a captured deterministic run the ceiling resolves to `executed`, without it `statically-evidenced`.
-- [ ] **Step 2: Red → Step 3: Implement → Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): enumerate the source coverage denominator`
+- [x] **Step 1: Failing test** — a source analysis yields denominators `exported-symbol`, `route`, `exit-path` with exact counts from the fixture and a blind spot naming dynamic imports; with a captured deterministic run the ceiling resolves to `executed`, without it `statically-evidenced`.
+- [x] **Step 2: Red → Step 3: Implement → Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): enumerate the source coverage denominator`
 
 ### Task 20: Static-only classes
 
 **Files:** create `ui/blueprint/denominators/native.mjs`, `ui/blueprint/denominators/native.test.mjs`, modify `ui/blueprint.mjs` (`buildApk`/`buildCode` ceiling wiring)
 
-- [ ] **Step 1: Failing test** — an APK analysis yields `screen`, `exported-symbol`, `asset` denominators, `ceiling: "statically-evidenced"`, and `resolveCeiling({ targetClass: "apk", requested: "executed" })` downgrades with `apk:no-execution-grant`; a native binary without a trace probe yields `inferred-only` and every behavioural claim must be `assumed` or `derived`, never `observed`.
-- [ ] **Step 2: Red → Step 3: Implement → Step 4: Green.**
-- [ ] **Step 5: Commit** — `feat(blueprint): bound apk and native packages to static ceilings`
+- [x] **Step 1: Failing test** — an APK analysis yields `screen`, `exported-symbol`, `asset` denominators, `ceiling: "statically-evidenced"`, and `resolveCeiling({ targetClass: "apk", requested: "executed" })` downgrades with `apk:no-execution-grant`; a native binary without a trace probe yields `inferred-only` and every behavioural claim must be `assumed` or `derived`, never `observed`.
+- [x] **Step 2: Red → Step 3: Implement → Step 4: Green.**
+- [x] **Step 5: Commit** — `feat(blueprint): bound apk and native packages to static ceilings`
 
 ### Task 21: Documentation and final gate
 
 **Files:** modify `docs/specs/blueprint/claim-compiler/spec.md` (status → `implemented`), `docs/development/reconstruction-readiness.md` (link the package contract), `docs/adr/blueprint/claim-compiler-and-proof-ceilings.md` (Status → `accepted`)
 
-- [ ] **Step 1:** Update the three documents; no new guide, no new navigation entry.
-- [ ] **Step 2:** `npm run docs:check` → exit 0.
-- [ ] **Step 3:** `npm run check:fast` → exit 0.
-- [ ] **Step 4: Commit** — `docs(blueprint): record the claim compiler contract`
+- [x] **Step 1:** Update the three documents; no new guide, no new navigation entry.
+- [x] **Step 2:** `npm run docs:check` → exit 0.
+- [x] **Step 3:** `npm run check:fast` → exit 0.
+- [x] **Step 4: Commit** — `docs(blueprint): record the claim compiler contract`
 
 ### Stage 6 gate (feature acceptance)
 
-- [ ] `npx vitest run --project ui-evidence` green.
-- [ ] `npm run check:fast` exit 0.
-- [ ] `npm run docs:check` exit 0.
-- [ ] `git diff --stat main -- src/artifacts/NodeSeaArtifactReader.ts` is empty.
+- [x] `npx vitest run --project ui-evidence` green.
+- [x] `npm run check:fast` exit 0.
+- [x] `npm run docs:check` exit 0.
+- [x] `git diff --stat main -- src/artifacts/NodeSeaArtifactReader.ts` is empty.

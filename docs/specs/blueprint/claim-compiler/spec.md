@@ -1,6 +1,6 @@
 # Blueprint Claim Compiler
 
-**Status:** proposed
+**Status:** implemented
 **Owner:** blueprint generation (`ui/blueprint.mjs`)
 **Related:** [`docs/development/reconstruction-readiness.md`](../../../development/reconstruction-readiness.md),
 `docs/adr/blueprint/claim-compiler-and-proof-ceilings.md`
