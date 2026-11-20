@@ -896,9 +896,10 @@ export function renderMarkdown(compiled) {
     add("");
     for (const check of completeness.checks || []) {
       const refs = (check.evidence || [])
-        .map(
-          (entry) =>
-            `\`${entry.path}${entry.pointer ? `#${entry.pointer}` : entry.line ? `:${entry.line}` : ""}\``,
+        .map((entry) =>
+          entry.path
+            ? `\`${entry.path}${entry.pointer ? `#${entry.pointer}` : entry.line ? `:${entry.line}` : ""}\``
+            : `nicht im Paket enthalten: ${entry.unavailable}`,
         )
         .join(", ");
       bullet(
@@ -1008,6 +1009,24 @@ export function renderMarkdown(compiled) {
   });
 
   section("10. Beweise im Paket", () => {
+    part("Paketbestandteile", () => {
+      add("| Datei | Inhalt |");
+      add("| --- | --- |");
+      add("| `BLUEPRINT.md` | Bauplan und Behauptungen (diese Datei) |");
+      add("| `blueprint.json` | Dieselben Fakten maschinenlesbar |");
+      add("| `AGENT-PROMPT.md` | Fertiger Auftrag für einen Coding-Agenten |");
+      add("| `ledger.json` | Closure-Ledger mit Nennern und Einträgen |");
+      add("| `acceptance.json` | Ausführbare Prüfungen samt Falsifier |");
+      add("| `flows/flows.json` | Aufgenommene Abläufe |");
+      add("| `specs/ui.md` | UI-Spec der sichtbaren Schale |");
+      add("| `specs/logic.md` | Logik-Spec von Netzwerk, Routen und Modulen |");
+      add("| `schemas/` | JSON-Schemas für Claims, Ledger, Manifest, Flows |");
+      add("| `evidence/` | Paketinterne Belege (Aufnahme, Analyse) |");
+      add("| `surface/` | DOM und weitere Oberflächenbelege |");
+      add("| `MANIFEST.json` | Jede Datei mit Größe und SHA-256 |");
+      add("| `README.txt` | Kurzüberblick über das Paket |");
+    });
+    add("");
     for (const item of bp.evidence) {
       bullet(
         `${item.role}: \`${item.path}\`${item.bytes ? ` (${item.bytes} Bytes)` : ""}${item.sha256 ? `, SHA-256 \`${item.sha256}\`` : ""}`,
@@ -1044,7 +1063,7 @@ export function blueprintKind(bp) {
   return "generic";
 }
 
-function agentKindGuide(kind) {
+function agentKindGuide(kind, sourceIncluded = true) {
   if (kind === "web") {
     return {
       paths:
@@ -1054,7 +1073,9 @@ function agentKindGuide(kind) {
       rules: [
         "Übernimm DOM-Struktur, sichtbare Texte, ARIA-Rollen, Routen und Speicher-Schlüssel unverändert, sofern die Blaupause sie nennt.",
         "Übernimm jeden belegten Netzwerkaufruf mit Methode, Pfad, Statusklasse und beobachteter Antwortform.",
-        "Baue die JavaScript-Funktionen und ihren Aufrufgraph aus `source/` nach; erfinde keine Serverfunktion, die nicht belegt ist.",
+        sourceIncluded
+          ? "Baue die JavaScript-Funktionen und ihren Aufrufgraph aus `source/` nach; erfinde keine Serverfunktion, die nicht belegt ist."
+          : "Ein Quelltext-Export liegt diesem Paket nicht bei; leite Funktionen nur aus den belegten DOM-, Netzwerk- und Beleg-Fakten ab und markiere jede Ergänzung als Annahme.",
       ],
     };
   }
@@ -1098,7 +1119,7 @@ function agentKindGuide(kind) {
 export function renderPrompt(compiled) {
   const bp = compiled.blueprint;
   const kind = blueprintKind(bp);
-  const guide = agentKindGuide(kind);
+  const guide = agentKindGuide(kind, bp.source_included !== false);
   const counted = `${bp.bundle.files} Dateien, davon ${bp.evidence.length} Beweise`;
   const paths = bp.source_included
     ? guide.paths

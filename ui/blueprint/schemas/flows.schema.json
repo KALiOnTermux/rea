@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rea.local/schemas/blueprint-flows.schema.json",
+  "title": "REA blueprint flows",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "blueprint_id",
+    "target",
+    "ceiling",
+    "flows"
+  ],
+  "properties": {
+    "schema": { "const": "rea.blueprint.flows" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "blueprint_id": { "type": "string" },
+    "target": { "type": "object" },
+    "ceiling": { "type": "object" },
+    "flows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "action",
+          "from_url",
+          "to_url",
+          "status",
+          "elapsed_ms",
+          "evidence"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "action": { "type": "string", "minLength": 1 },
+          "from_url": { "type": "string" },
+          "to_url": { "type": "string" },
+          "status": { "type": ["integer", "null"] },
+          "elapsed_ms": { "type": ["number", "null"] },
+          "step": { "type": "string" },
+          "evidence": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "selector": { "type": "object" }
+      }
+    }
+  }
+}

@@ -23,6 +23,7 @@ import {
   renderPrompt,
 } from "./blueprint/render.mjs";
 import { Bundle, hashFile, sha256 } from "./blueprint-zip.mjs";
+import { packageParts } from "./blueprint/package-parts.mjs";
 
 const MAX_TEXT = 4000;
 
@@ -3224,15 +3225,29 @@ export function coverageStatus(result) {
  * `status` and `gaps` come from the violations; the probe rows stay as
  * informational checks so a reader still sees what was looked at.
  */
-function projectCompleteness(probe, result) {
+function projectCompleteness(probe, result, files = null) {
   const status =
     result.ok && result.coverage === 1
       ? "complete"
       : result.ok
         ? "partial"
         : "insufficient";
+  // A probe names the artifact its proof would come from. When that artifact is
+  // not part of the package the reference must not dangle: it is kept, labelled
+  // as not shipped, so a reader sees which proof is missing instead of a path
+  // that resolves to nothing.
+  const shipped = files instanceof Set ? files : null;
+  const checks = (probe.checks ?? []).map((check) => ({
+    ...check,
+    evidence: (check.evidence ?? []).map((entry) =>
+      shipped && entry?.path && !shipped.has(entry.path)
+        ? { unavailable: entry.path, why: "nicht im Paket enthalten" }
+        : entry,
+    ),
+  }));
   return {
     ...probe,
+    checks,
     status,
     score: Math.round((result.coverage ?? 0) * 100),
     passed: (probe.checks ?? []).filter((check) => check.ok).length,
@@ -3327,7 +3342,14 @@ export async function buildBlueprint(config) {
     violations: firstGate.violations.length,
   };
   bp.closure = ledger.closure;
-  bp.completeness = projectCompleteness(probe, firstGate);
+  bp.completeness = projectCompleteness(
+    probe,
+    firstGate,
+    new Set([
+      ...ctx.bundle.entries.map((entry) => entry.name),
+      "MANIFEST.json",
+    ]),
+  );
   bp.coverage.status = coverageStatus(firstGate);
   bp.coverage.ratio = ledger.closure.ratio;
   bp.coverage.open_points = firstGate.violations.length;
@@ -3356,7 +3378,9 @@ export async function buildBlueprint(config) {
       "ledger.json       Abschluss-Ledger: Nenner, Einträge, Coverage.",
       "acceptance.json   Ausführbare Abnahmeprüfungen (http, dom, structure, …).",
       "MANIFEST.json     Jede Datei mit Größe und SHA-256.",
-      "schemas/          JSON-Schemas für Behauptungen, Ledger und Manifest.",
+      "schemas/          JSON-Schemas für Behauptungen, Ledger, Manifest und Flows.",
+      "flows/            Aufgenommene Abläufe als JSON (Schritt, Ziel, Beleg).",
+      "specs/            UI- und Logik-Spec für den Nachbau.",
       "evidence/         Aufnahmen, Analysen und Werkzeugergebnisse.",
       "source/           Exportierte Skripte oder dekompilierter Code.",
       "surface/          DOM, Screenshot, Manifest, Ressourcen.",
@@ -3365,7 +3389,7 @@ export async function buildBlueprint(config) {
     ].join("\n"),
   );
 
-  for (const schema of ["claims", "ledger", "manifest"]) {
+  for (const schema of ["claims", "ledger", "manifest", "flows"]) {
     ctx.bundle.addData(
       `schemas/${schema}.schema.json`,
       await readFile(
@@ -3373,6 +3397,12 @@ export async function buildBlueprint(config) {
         "utf8",
       ),
     );
+  }
+
+  // Flows and specs are package parts, not extras: a rebuild needs them and the
+  // reference check in `package-verify` resolves them inside the unpacked package.
+  for (const [name, contents] of Object.entries(packageParts(bp))) {
+    ctx.bundle.addData(name, contents);
   }
 
   const ledgerText = `${JSON.stringify(ledger, null, 2)}\n`;
