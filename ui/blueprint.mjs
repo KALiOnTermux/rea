@@ -3305,6 +3305,7 @@ export async function buildBlueprint(config) {
       "AGENT-PROMPT.md",
       "blueprint.json",
       "ledger.json",
+      "acceptance.json",
       "MANIFEST.json",
       "README.txt",
     ],
@@ -3358,6 +3359,8 @@ export async function buildBlueprint(config) {
 
   const ledgerText = `${JSON.stringify(ledger, null, 2)}\n`;
   ctx.bundle.addData("ledger.json", ledgerText);
+  const acceptanceText = `${JSON.stringify(compiled.acceptance, null, 2)}\n`;
+  ctx.bundle.addData("acceptance.json", acceptanceText);
   const gateReport = firstGate.ok
     ? null
     : {
@@ -3426,6 +3429,7 @@ export async function buildBlueprint(config) {
   );
   await writeFile(join(ctx.dir, "MANIFEST.json"), manifestText, "utf8");
   await writeFile(join(ctx.dir, "ledger.json"), ledgerText, "utf8");
+  await writeFile(join(ctx.dir, "acceptance.json"), acceptanceText, "utf8");
   if (gateReportText) {
     await writeFile(join(ctx.dir, "GATE-REPORT.json"), gateReportText, "utf8");
   }

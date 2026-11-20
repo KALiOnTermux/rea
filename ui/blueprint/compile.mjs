@@ -13,10 +13,12 @@
  * - `markdown` / `prompt` — the two documents an agent reads.
  * - `manifest` — the file list and named digests, `produced_at` excluded.
  * - `ledger` — the closure ledger with its fixed denominator (stage 3).
- * - `acceptance` — the executable acceptance file (stage 4); `null` until then.
+ * - `acceptance` — the executable acceptance file derived from the claims, plus
+ *   the falsifiers that name a check the emission did not produce.
  */
 
 import { createHash } from "node:crypto";
+import { emitAcceptance } from "./acceptance-emit.mjs";
 import { analysisDigest, canonicalJson } from "./analysis.mjs";
 import { assertUniqueClaimIds, sortClaims } from "./claims.mjs";
 import { ledgerFromAnalysis } from "./ledger.mjs";
@@ -71,11 +73,15 @@ function blueprintFrom(analysis, digest, claims) {
  */
 export function compile(analysis) {
   const digest = analysisDigest(analysis);
-  const claims = sortClaims(analysis.claims ?? []);
+  const ledger = ledgerFromAnalysis(analysis);
+  const emitted = emitAcceptance({
+    claims: sortClaims(analysis.claims ?? []),
+    ledger,
+  });
+  const claims = sortClaims(emitted.claims);
   assertUniqueClaimIds(claims);
 
   const blueprint = blueprintFrom(analysis, digest, claims);
-  const ledger = ledgerFromAnalysis(analysis);
   blueprint.coverage.ratio = ledger.closure.ratio;
   blueprint.coverage.status =
     ledger.closure.ratio === 1
@@ -88,7 +94,8 @@ export function compile(analysis) {
     blueprint,
     claims,
     ledger,
-    acceptance: null,
+    acceptance: emitted.acceptance,
+    missing: emitted.missing,
   };
   compiled.markdown = renderMarkdown(compiled);
   compiled.prompt = renderPrompt(compiled);
