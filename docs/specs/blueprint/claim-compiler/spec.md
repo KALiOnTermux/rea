@@ -97,6 +97,18 @@ runtime behaviour.
 }
 ```
 
+For a web capture, the denominator classes beyond `request` and `dom-node` are
+claims too: each referenced asset (`img[src=…]`, `script[src=…]`,
+`link[href=…]` in the packaged DOM) and each route the capture names becomes an
+`observed` claim whose selector is exactly the one the ledger enumerates. A
+route cites the capture's own keys (`/url`, `/final_url`,
+`/steps/<i>/after_url`), never a derived path that exists only in the IR. A
+separately recorded history is not enumerated as its own route; the route blind
+spot states that, because a denominator item no packaged evidence can name would
+be a permanent gap. Assets and routes carry the static ceiling: their presence is
+re-derivable from the package, while `executed` stays with the acceptance check
+that replays the page.
+
 `kind` and its companion field:
 
 - `observed` — a probe recorded it. Requires ≥ 1 resolving `evidence` entry.
@@ -113,15 +125,28 @@ runtime behaviour.
 `executed` falsifier; a `structure` or `state` falsifier is not sufficient there.
 
 Selectors extend the existing resolver (`resolveEvidenceRef`) with
-`{ type: "pointer" }`, `{ type: "lines", from, to }`, `{ type: "dom", path }`,
+`{ type: "whole" }`, `{ type: "pointer", pointer }`,
+`{ type: "lines", from, to }`, `{ type: "dom", path }`,
 `{ type: "request", index }` and `{ type: "byte-range", from, to }`. The legacy
-shorthand (`line`, `contains`, `offset`) stays valid so existing evidence and
-`blueprint-evidence.test.mjs` keep working.
+shorthand (`pointer`, `contains`, `line`, `offset`) stays valid so existing
+evidence and `blueprint-evidence.test.mjs` keep working. `whole` names the file
+itself and is the most common selector in a real package; an unknown `type` is
+unresolved, never a silent pass.
+
+The single resolver is `ui/blueprint/evidence.mjs` (`SELECTOR_TYPES`,
+`resolveSelector`, `resolveEvidence`). The build gate resolves every selector
+against the packaged bytes in both of its passes, and
+`npm run blueprint:verify` resolves it again inside an unpacked package; DOM
+selectors use the acceptance runner's `matchesSelector` grammar, so evidence and
+acceptance cannot disagree about which node exists.
 
 Rendering puts the three kinds in three separate sections with no shared table,
 so a derived statement cannot appear as an observation. Section 10 of
-`BLUEPRINT.md` lists, per claim, `kind`, `ceiling`, `evidence` path and
-`falsifier`.
+`BLUEPRINT.md` lists, per claim, `kind`, `ceiling`, its support and
+`falsifier`; a derived claim names its derivation (`abgeleitet aus N Eingabe(n)`)
+and an assumed one names the assumption, so neither reads as a claim without a
+reference. `AGENT-PROMPT.md` states the evidence ceiling and the closure ratio of
+the package it hands to the agent.
 
 ## 6. Closure ledger
 
@@ -174,6 +199,12 @@ package cannot look closed while a source tree or evidence tree was truncated.
 Coverage reported anywhere in the package derives from `closure`, never from a
 threshold count.
 
+`MANIFEST.json` declares the same denominator (`denominators.classes[]` with
+`class`, `items` and the enumerating `probe`, plus `denominators.total`), so an
+unpacked package can be audited against the number it promised. That declaration
+is the reference `blueprint:verify` compares the unpacked ledger to; the
+ledger's own `denominators` block is not trusted to agree with itself.
+
 ## 7. Two-pass analyze → render
 
 ```ts
@@ -199,6 +230,12 @@ Consequences, all breaking for `blueprint.json` consumers:
 `compile(compileInput)` twice returns byte-identical output; `analyze` on the
 same inputs returns the same `analysisDigest`.
 
+A reproducible build pins `generatedAt`: `MANIFEST.json#produced_at` and the ZIP
+DOS timestamps are derived from it instead of the clock, so two builds from the
+same input produce byte-identical archives. Source locations are recorded as the
+package-relative path (`source/web/project`) or the folder name, never as a host
+path: the package has to make sense on the machine that unpacks it.
+
 ## 8. Fail-closed gate
 
 ```ts
@@ -213,7 +250,8 @@ export function gate(
 ```
 
 Violation codes: `claim.evidence.unresolved`,
-`claim.observed.without_evidence`, `claim.derived.without_derivation`,
+`claim.evidence.selector_unresolved` (the path is packaged but its selector
+resolves nowhere), `claim.observed.without_evidence`, `claim.derived.without_derivation`,
 `claim.derived.forward_reference`, `claim.assumed.without_resolution`,
 `claim.ceiling.exceeds_run`, `claim.falsifier.missing`,
 `claim.falsifier.not_executable`, `ledger.denominator.mismatch`,
@@ -245,7 +283,7 @@ criterion with its check id, kind and the fixture it needs.
 | `process`   | Runs `argv`, asserts exit code, stdout/stderr ordering             |
 | `structure` | Asserts presence and shape of files, exports, manifest entries     |
 
-`acceptance/run-acceptance.mjs` executes a subset for a given rebuild directory
+`ui/blueprint/run-acceptance.mjs` executes a subset for a given rebuild directory
 and prints `{passed, failed, skipped, unexecutable}`. A check that cannot run for
 the target class is `skipped` with a reason and blocks `complete`; a criterion
 without a check is `acceptance.criterion.missing`.
@@ -255,8 +293,43 @@ without a check is `acceptance.criterion.missing`.
 `npm run blueprint:fidelity -- --package <zip> --rebuild <dir>` runs the
 acceptance subset against a user-supplied rebuild and writes
 `rebuild-report.json` with per-criterion verdicts. The corpus lives in
-`tests/fidelity/corpus/`; a corpus case is a package plus a rebuild plus the
-expected verdict set. A failed criterion is reported as a _blueprint_ defect
+`ui/blueprint/corpus/`; a corpus case is a package plus a rebuild plus the
+expected verdict set.
+
+`npm run blueprint:verify -- <paketverzeichnis>` checks an unpacked package
+without the repository: it re-runs the gate, the manifest hashes, every claim's
+evidence digest and selector, every path the package references, and the ledger
+against the denominator the manifest declares. Each defect keeps one code: a
+missing evidence file is `claim.evidence.unresolved` (from the gate), while
+`claim.evidence.selector_unresolved` is reserved for a selector that fails inside
+bytes the package does contain. The denominator comparison distinguishes a
+removed unit (`ledger.unit.missing`), an added one
+(`ledger.unit.unexpected`) and a reclassified one with the same total
+(`ledger.unit.reclassified`); a manifest that declares neither denominator nor
+determinism rule is `manifest.denominator.undeclared` /
+`manifest.determinism.undeclared`.
+
+Both documents carry the same declarations and are checked against them, so the
+readable ceiling cannot drift from the declared one. `BLUEPRINT.md` prints
+`**Evidenz-Decke:**`, `**Herabstufungen:**` and `**Behauptungen:** <n> gesamt ·
+<n> observed · <n> derived · <n> assumed`; `AGENT-PROMPT.md` prints the three as
+plain lines plus a `## Evidenzlage (verbindlich)` block naming all four
+categories. A differing ceiling or downgrade list is `docs.ceiling.mismatch` /
+`docs.downgrade.mismatch`, differing counts are `docs.claim_count.mismatch`, a
+dropped section is `docs.section.missing`, and an empty category that is not
+marked as empty is `docs.section.empty_unmarked`.
+
+`MANIFEST.json#determinism` states the rule the build actually follows: entry
+sort order, pinned `produced_at` outside every digest, ZIP timestamps derived from
+`produced_at` in UTC, no clock or environment read in `compile`, and the scope
+(evidence ceiling plus `downgraded_by`) the rule holds for. An unpacked
+package contains `BLUEPRINT.md`, `AGENT-PROMPT.md`, `blueprint.json`,
+`README.txt`, `ledger.json`, `acceptance.json`, `MANIFEST.json`,
+`GATE-REPORT.json` (only when the gate found violations), `schemas/`
+(`claims`, `ledger`, `manifest`, `flows`), `flows/flows.json`, `specs/ui.md`,
+`specs/logic.md`, `evidence/` and `surface/` (DOM, screenshot, manifest,
+resources, plus `accessibility.txt` and `storage.json` when the capture has
+them). A failed criterion is reported as a _blueprint_ defect
 (ambiguity or missing evidence) unless the corpus marks it `rebuild-defect`.
 
 The harness never builds the rebuild itself and never executes the original
@@ -266,7 +339,7 @@ target.
 
 | ID  | Requirement                                                                                           |
 | --- | ----------------------------------------------------------------------------------------------------- |
-| R1  | `claims.schema.json`, `ledger.schema.json` and `manifest.schema.json` validate every produced package |
+| R1  | `claims.schema.json`, `ledger.schema.json`, `manifest.schema.json` and `flows.schema.json` validate every produced package |
 | R2  | Every claim has `id`, `statement`, `kind`, `ceiling`, `evidence`, `falsifier`                         |
 | R3  | `observed` has evidence, `derived` has derivation, `assumed` has resolution + `inferred-only`         |
 | R4  | The run ceiling follows the class matrix and is recorded with its forcing probe                       |

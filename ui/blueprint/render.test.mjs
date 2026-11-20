@@ -261,6 +261,10 @@ test("the claim sections separate observations from derivations and assumptions"
     map.get("6. Abgeleitet (derived)"),
     /Regel `reconstruction\.step`/,
   );
+  assert.match(
+    map.get("6. Abgeleitet (derived)"),
+    /\*\*Beleg:\*\* abgeleitet aus \d+ Eingabe/,
+  );
   assert.match(map.get("7. Angenommen (assumed)"), /\*\*Auflösung:\*\*/);
   assert.match(
     map.get("7. Angenommen (assumed)"),
@@ -279,7 +283,15 @@ test("section 10 lists the evidence path and falsifier of every claim", () => {
     );
   }
   assert.match(evidence, /`evidence\/network\.json`/);
-  assert.match(evidence, /kein Beleg/);
+  // A derived claim names its derivation instead of pretending to have a file,
+  // an assumed one names the assumption; neither reads as "kein Beleg".
+  assert.match(evidence, /abgeleitet aus \d+ Eingabe/);
+  assert.match(evidence, /Annahme/);
+});
+
+test("the agent prompt declares the evidence ceiling", () => {
+  const prompt = renderPrompt(compiled());
+  assert.match(prompt, /Evidenz-Decke: statically-evidenced/);
 });
 
 test("the agent prompt points at the criteria and the gaps", () => {

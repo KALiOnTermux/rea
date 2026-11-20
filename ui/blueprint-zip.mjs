@@ -47,17 +47,23 @@ function zipName(value) {
     .join("/");
 }
 
+/**
+ * DOS date/time of a ZIP entry.
+ *
+ * UTC, not local time: the archive has to be byte-identical on a host in another
+ * timezone, which is what the manifest's determinism rule promises.
+ */
 function dosTimestamp(date = new Date()) {
-  const year = Math.max(1980, date.getFullYear());
+  const year = Math.max(1980, date.getUTCFullYear());
   return {
     time:
-      ((date.getHours() & 0x1f) << 11) |
-      ((date.getMinutes() & 0x3f) << 5) |
-      ((Math.floor(date.getSeconds() / 2) & 0x1f) >>> 0),
+      ((date.getUTCHours() & 0x1f) << 11) |
+      ((date.getUTCMinutes() & 0x3f) << 5) |
+      ((Math.floor(date.getUTCSeconds() / 2) & 0x1f) >>> 0),
     date:
       (((year - 1980) & 0x7f) << 9) |
-      (((date.getMonth() + 1) & 0x0f) << 5) |
-      (date.getDate() & 0x1f),
+      (((date.getUTCMonth() + 1) & 0x0f) << 5) |
+      (date.getUTCDate() & 0x1f),
   };
 }
 
@@ -157,8 +163,14 @@ export class Bundle {
     return result;
   }
 
-  toBuffer() {
-    const { time, date } = dosTimestamp();
+  /**
+   * Serialises the archive. `date` pins the DOS timestamps so a reproducible
+   * build produces byte-identical ZIPs; omitted, it records the build time.
+   */
+  toBuffer(date = undefined) {
+    const { time: dosTime, date: dosDate } = dosTimestamp(date);
+    const time = dosTime;
+    const dateField = dosDate;
     const chunks = [];
     const central = [];
     let offset = 0;
@@ -171,7 +183,7 @@ export class Bundle {
       local.writeUInt16LE(0x0800, 6);
       local.writeUInt16LE(entry.method, 8);
       local.writeUInt16LE(time, 10);
-      local.writeUInt16LE(date, 12);
+      local.writeUInt16LE(dateField, 12);
       local.writeUInt32LE(entry.crc, 14);
       local.writeUInt32LE(entry.compressedSize, 18);
       local.writeUInt32LE(entry.size, 22);
@@ -186,7 +198,7 @@ export class Bundle {
       header.writeUInt16LE(0x0800, 8);
       header.writeUInt16LE(entry.method, 10);
       header.writeUInt16LE(time, 12);
-      header.writeUInt16LE(date, 14);
+      header.writeUInt16LE(dateField, 14);
       header.writeUInt32LE(entry.crc, 16);
       header.writeUInt32LE(entry.compressedSize, 20);
       header.writeUInt32LE(entry.size, 24);

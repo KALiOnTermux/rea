@@ -172,6 +172,10 @@ test("the manifest schema requires every field of R10", () => {
     "schema",
     "schema_version",
     "ceiling",
+    "ceiling_requested",
+    "downgraded_by",
+    "denominators",
+    "determinism",
     "compiler",
     "produced_at",
     "digests",
@@ -198,6 +202,28 @@ test("a claim from makeClaim validates and closed records reject extras", () => 
   assert.equal(validate(claim), true, JSON.stringify(validate.errors));
   assert.equal(validate({ ...claim, surprise: true }), false);
   assert.equal(validate({ ...claim, kind: "guess" }), false);
+});
+
+test("a manifest records the ceiling downgrade and refuses a loose value", () => {
+  const validate = compile("manifest");
+  const built = manifest();
+  built.ceiling_requested = "executed";
+  built.downgraded_by = ["apk:no-execution-grant"];
+  assert.equal(validate(built), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...built, downgraded_by: "apk" }), false);
+  assert.equal(validate({ ...built, downgraded_by: ["apk"] }), false);
+  assert.equal(validate({ ...built, ceiling_requested: "certain" }), false);
+  assert.equal(validate({ ...built, denominators: "22" }), false);
+  assert.equal(
+    validate({
+      ...built,
+      denominators: { total: 1, classes: [{ class: "a", items: 1 }] },
+    }),
+    false,
+  );
+  const { determinism, ...withoutDeterminism } = built;
+  assert.equal(determinism !== undefined, true);
+  assert.equal(validate(withoutDeterminism), false);
 });
 
 test("a manifest over binary evidence validates and backslashes are rejected", () => {

@@ -17,8 +17,28 @@ import { CEILING_ORDER } from "./ceiling.mjs";
 export const MANIFEST_SCHEMA = "rea.blueprint.manifest";
 export const MANIFEST_SCHEMA_VERSION = 1;
 
+/**
+ * The determinism rule the archive claims, stated in the manifest itself.
+ *
+ * Every sentence has to match what the build does: paths are sorted by code
+ * point, `produced_at` is supplied by the caller and hashed nowhere, and the ZIP
+ * headers are derived from it in UTC. If the build changes, this text changes
+ * with it.
+ */
+export const DETERMINISM_RULE = Object.freeze({
+  sort: "files[] und die Schlüssel von digests sind nach Pfad in Unicode-Codepunkt-Reihenfolge sortiert; Pfade sind eindeutig, Gleichstände gibt es nicht.",
+  produced_at:
+    "produced_at wird vom Aufrufer gepinnt und geht in keinen Digest ein (weder digests.package noch digests.blueprint).",
+  zip_timestamps:
+    "DOS-Datum und -Zeit jedes ZIP-Eintrags werden aus produced_at in UTC abgeleitet; die Uhr des Build-Hosts geht nicht ein.",
+  clock:
+    "Der Compiler liest weder Uhrzeit noch Umgebung; alle Eingaben kommen als Daten. Der ausgelieferte Build pinnt produced_at, deshalb ergeben zwei Builds aus identischem Quellzustand byte-identische Archive.",
+});
+
 const HASH_MISMATCH = "manifest.hash_mismatch";
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** A downgrade is `<target class>:<forcing probe>`, e.g. `apk:no-execution-grant`. */
+const DOWNGRADE = /^[a-z][a-z0-9]*:[a-z0-9-]+$/;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 export class ManifestError extends Error {
@@ -44,6 +64,45 @@ function toBuffer(value, label) {
   if (value instanceof Uint8Array) return Buffer.from(value);
   if (typeof value === "string") return Buffer.from(value, "utf8");
   throw new ManifestError(`${label} must be bytes or a string`);
+}
+
+/**
+ * The fixed denominator, declared per class with its total.
+ *
+ * This is the number a package promises to account for; `blueprint:verify`
+ * compares it against the ledger it unpacks, so a removed, added or reclassified
+ * unit is a violation instead of a quietly lowered denominator.
+ */
+function normaliseDenominators(denominators) {
+  if (!Array.isArray(denominators)) {
+    throw new ManifestError("denominators must be an array of class entries");
+  }
+  const seen = new Set();
+  const classes = denominators
+    .map((item) => {
+      const cls = item?.class;
+      if (typeof cls !== "string" || cls.trim() === "") {
+        throw new ManifestError(
+          `denominator class must be a non-empty string, got ${JSON.stringify(cls)}`,
+        );
+      }
+      if (seen.has(cls)) {
+        throw new ManifestError(`denominator class ${cls} is declared twice`);
+      }
+      seen.add(cls);
+      if (!Number.isInteger(item.items) || item.items < 0) {
+        throw new ManifestError(
+          `denominator ${cls} needs a non-negative integer items, got ${JSON.stringify(item.items)}`,
+        );
+      }
+      if (typeof item.probe !== "string" || item.probe.trim() === "") {
+        throw new ManifestError(`denominator ${cls} needs a probe name`);
+      }
+      return { class: cls, items: item.items, probe: item.probe };
+    })
+    .sort((left, right) => compareStrings(left.class, right.class));
+  const total = classes.reduce((sum, item) => sum + item.items, 0);
+  return { total, classes };
 }
 
 /** Normalises a packaged path and refuses one that could leave the package. */
@@ -106,6 +165,9 @@ export function buildManifest({
   files,
   digests,
   ceiling,
+  ceiling_requested = ceiling,
+  downgraded_by = [],
+  denominators = [],
   compiler,
   analysis_digest,
   produced_at,
@@ -120,9 +182,27 @@ export function buildManifest({
       `ceiling must be one of ${CEILING_ORDER.join(", ")}, got ${JSON.stringify(ceiling)}`,
     );
   }
+  if (!CEILING_ORDER.includes(ceiling_requested)) {
+    throw new ManifestError(
+      `ceiling_requested must be one of ${CEILING_ORDER.join(", ")}, got ${JSON.stringify(ceiling_requested)}`,
+    );
+  }
+  if (!Array.isArray(downgraded_by)) {
+    throw new ManifestError(
+      `downgraded_by must be an array of <class>:<probe>, got ${JSON.stringify(downgraded_by)}`,
+    );
+  }
+  for (const reason of downgraded_by) {
+    if (typeof reason !== "string" || !DOWNGRADE.test(reason)) {
+      throw new ManifestError(
+        `downgraded_by entries must look like apk:no-execution-grant, got ${JSON.stringify(reason)}`,
+      );
+    }
+  }
   if (typeof compiler !== "string" || compiler.trim() === "") {
     throw new ManifestError("compiler must be a non-empty string");
   }
+  const declaredDenominators = normaliseDenominators(denominators);
   if (analysis_digest !== undefined && !SHA256_HEX.test(analysis_digest)) {
     throw new ManifestError(
       "analysis_digest must be a lowercase sha256 hex digest",
@@ -157,6 +237,17 @@ export function buildManifest({
     schema: MANIFEST_SCHEMA,
     schema_version: MANIFEST_SCHEMA_VERSION,
     ceiling,
+    // §4: a downgrade is recorded with the probe that forced it, so a reader can
+    // see what the run asked for and what it was allowed to prove.
+    ceiling_requested,
+    downgraded_by: [...downgraded_by],
+    // The fixed denominator and the determinism rule travel with the archive, so
+    // an unpacked package can be audited without the build that produced it.
+    denominators: declaredDenominators,
+    determinism: {
+      ...DETERMINISM_RULE,
+      scope: { ceiling, downgraded_by: [...downgraded_by] },
+    },
     compiler,
   };
   if (analysis_digest !== undefined) manifest.analysis_digest = analysis_digest;

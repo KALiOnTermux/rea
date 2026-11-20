@@ -15,6 +15,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { analysisDigest, toAnalysis } from "./blueprint/analysis.mjs";
 import { COMPILER_ID, compile } from "./blueprint/compile.mjs";
+import { resolveEvidence } from "./blueprint/evidence.mjs";
 import { BlueprintGateError, gate } from "./blueprint/gate.mjs";
 import { buildManifest } from "./blueprint/manifest.mjs";
 import {
@@ -1596,7 +1597,9 @@ function createContext(config) {
     limits: [],
     dir: "",
     id: "",
-    generatedAt: new Date().toISOString(),
+    // A reproducible build passes its own timestamp, so the manifest and the
+    // ZIP headers are identical across runs.
+    generatedAt: config.generatedAt ?? new Date().toISOString(),
   };
 }
 
@@ -1796,66 +1799,18 @@ function bundleEntryBuffer(ctx, name) {
   }
 }
 
-function jsonPointerValue(value, pointer) {
-  if (!pointer || pointer === "/") return value;
-  let current = value;
-  for (const raw of pointer.split("/").slice(1)) {
-    const key = raw.replaceAll("~1", "/").replaceAll("~0", "~");
-    if (current == null || typeof current !== "object") return undefined;
-    if (!Object.prototype.hasOwnProperty.call(current, key)) return undefined;
-    current = current[key];
-  }
-  return current;
-}
-
+/**
+ * Resolves one evidence reference against the bundle (or a virtual document).
+ *
+ * The selector semantics live in `blueprint/evidence.mjs`, because the build
+ * gate and the package verifier must apply exactly the same rule.
+ */
 function resolveEvidenceRef(ref, ctx, virtualFiles = {}) {
   const virtual = virtualFiles[ref.path];
   const buffer =
     virtual != null ? Buffer.from(virtual) : bundleEntryBuffer(ctx, ref.path);
-  if (!buffer || buffer.length === 0) {
-    return { ref, ok: false, reason: `Datei fehlt oder ist leer: ${ref.path}` };
-  }
-  if (ref.pointer) {
-    let parsed;
-    try {
-      parsed = JSON.parse(buffer.toString("utf8"));
-    } catch {
-      return { ref, ok: false, reason: `kein JSON: ${ref.path}` };
-    }
-    const value = jsonPointerValue(parsed, ref.pointer);
-    if (value === undefined || value === null) {
-      return {
-        ref,
-        ok: false,
-        reason: `Pointer nicht auflösbar: ${ref.path}#${ref.pointer}`,
-      };
-    }
-  }
-  if (ref.contains) {
-    const text = buffer.toString("utf8");
-    if (!text.includes(ref.contains)) {
-      return { ref, ok: false, reason: `Textmarke fehlt: ${ref.contains}` };
-    }
-  }
-  if (ref.line != null) {
-    const text = buffer.toString("utf8");
-    const lines = text.split(/\r?\n/);
-    if (text.endsWith("\n")) lines.pop();
-    if (ref.line < 1 || ref.line > lines.length) {
-      return {
-        ref,
-        ok: false,
-        reason: `Zeile ${ref.line} liegt außerhalb von ${ref.path}`,
-      };
-    }
-  }
-  if (ref.offset != null && (ref.offset < 0 || ref.offset >= buffer.length)) {
-    return {
-      ref,
-      ok: false,
-      reason: `Offset ${ref.offset} liegt außerhalb von ${ref.path}`,
-    };
-  }
+  const result = resolveEvidence(ref, () => buffer);
+  if (!result.ok) return { ref, ok: false, reason: result.reason };
   return { ref, ok: true, bytes: buffer.length };
 }
 
@@ -2888,9 +2843,16 @@ async function buildWeb(ctx) {
 
   const network = networkFromEvents(events);
   const sourceRoot = input.web?.source || input.web?.scripts || null;
+  // A package must not record host paths: they mean nothing on the machine that
+  // unpacks it. Name the location inside the package instead, or the folder.
+  const packagedSourceRoot = ctx.includeSources ? "source/web/project" : null;
+  const portableSource = sourceRoot
+    ? (packagedSourceRoot ?? basename(String(sourceRoot)))
+    : null;
   const sourceAnalysis = sourceRoot
     ? await analyzeProjectSource(sourceRoot)
     : null;
+  if (sourceAnalysis) sourceAnalysis.root = portableSource;
   const staticEvents = uniqueItems(
     [...(sourceAnalysis?.events || []), ...domEventBindings(dom)],
     (item) =>
@@ -3083,9 +3045,15 @@ async function buildWeb(ctx) {
   };
   const internals = {
     scripts: {
-      directory: input.web?.scripts || null,
-      analysis_input: input.web?.analysisInput || null,
-      source_directory: input.web?.source || null,
+      directory: input.web?.scripts
+        ? (portableSource ?? basename(String(input.web.scripts)))
+        : null,
+      analysis_input: input.web?.analysisInput
+        ? basename(String(input.web.analysisInput))
+        : null,
+      source_directory: input.web?.source
+        ? (portableSource ?? basename(String(input.web.source)))
+        : null,
     },
     source_analysis: sourceAnalysis
       ? {
@@ -3569,6 +3537,14 @@ export async function buildBlueprint(config) {
       "README.txt",
     ],
     omitted: [...(ctx.bundle.omitted ?? [])],
+    // The rendered documents are not bundle entries yet. Both passes must still
+    // resolve the same evidence, otherwise a selector that only one pass can read
+    // would surface as "the gate did not converge" instead of the violation.
+    readFile: (path) => {
+      if (path === "BLUEPRINT.md") return Buffer.from(compiled.markdown, "utf8");
+      if (path === "AGENT-PROMPT.md") return Buffer.from(compiled.prompt, "utf8");
+      return bundleEntryBuffer(ctx, path) ?? undefined;
+    },
   });
   bp.gate = {
     ok: firstGate.ok,
@@ -3667,6 +3643,9 @@ export async function buildBlueprint(config) {
   const manifest = buildManifest({
     files: packageFiles,
     ceiling: bp.ceiling.ceiling,
+    ceiling_requested: bp.ceiling.requested ?? bp.ceiling.ceiling,
+    downgraded_by: bp.ceiling.downgraded_by ?? [],
+    denominators: ledger.denominators,
     compiler: COMPILER_ID,
     analysis_digest: analysisDigest(analysis),
     produced_at: ctx.generatedAt,
@@ -3721,7 +3700,7 @@ export async function buildBlueprint(config) {
     "Alle Dateien werden zu einer herunterladbaren ZIP-Datei gebündelt.",
     94,
   );
-  const zip = ctx.bundle.toBuffer();
+  const zip = ctx.bundle.toBuffer(new Date(ctx.generatedAt));
   const zipName = `${slug(target.name || ctx.kind)}-blueprint.zip`;
   const zipPath = join(ctx.dir, zipName);
   await writeFile(zipPath, zip);

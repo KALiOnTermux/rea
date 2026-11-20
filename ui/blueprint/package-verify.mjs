@@ -7,13 +7,15 @@
  * never the source tree, so no compiler state can leak into the check.
  *
  * It re-runs the same `gate` over the packaged JSON, re-verifies the manifest
- * hashes, re-computes every claim's evidence digest and resolves every path the
+ * hashes, re-computes every claim's evidence digest, resolves every claim's
+ * evidence selector against the packaged bytes and resolves every path the
  * package references to a file inside the package.
  */
 
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
+import { resolveEvidence } from "./evidence.mjs";
 import { gate } from "./gate.mjs";
 import { verifyManifest } from "./manifest.mjs";
 import { renderMarkdown } from "./render.mjs";
@@ -22,6 +24,132 @@ const DOCUMENTS = ["BLUEPRINT.md", "blueprint.json", "AGENT-PROMPT.md"];
 const MANIFEST = "MANIFEST.json";
 
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** The declarations the documents print, in the exact wording the renderer uses. */
+const DOC_DECLARATION = {
+  "BLUEPRINT.md": {
+    ceiling: /^- \*\*Evidenz-Decke:\*\* (\S+)$/m,
+    downgrades: /^- \*\*Herabstufungen:\*\* (.+)$/m,
+    counts: /^- \*\*Behauptungen:\*\* (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
+    sections: [
+      "## 5. Beobachtet (observed)",
+      "## 6. Abgeleitet (derived)",
+      "## 7. Angenommen (assumed)",
+      "## 9. Offene Punkte",
+    ],
+    emptyAssumed: /Keine Behauptungen dieser Art im Paket\./,
+  },
+  "AGENT-PROMPT.md": {
+    ceiling: /^Evidenz-Decke: (\S+)$/m,
+    downgrades: /^Herabstufungen: (.+)$/m,
+    counts: /^Behauptungen: (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
+    sections: [
+      "## Evidenzlage (verbindlich)",
+      "Beobachtet (observed): ",
+      "Abgeleitet (derived): ",
+      "Angenommen (assumed): ",
+      "Offene Lücken: ",
+    ],
+    emptyAssumed: /Angenommen \(assumed\): keine Annahme/,
+  },
+};
+
+/**
+ * Compares the documents' own declarations with the manifest and the claims.
+ * A document that names a higher ceiling than the manifest is the case this
+ * exists for: the rebuild would trust a proof the package does not hold.
+ */
+export function checkDeclarations({ manifest, blueprint, contents, add }) {
+  const claims = Array.isArray(blueprint?.claims) ? blueprint.claims : [];
+  const counts = { observed: 0, derived: 0, assumed: 0 };
+  for (const claim of claims) {
+    if (claim.kind in counts) counts[claim.kind] += 1;
+  }
+  const declaredCeiling = manifest?.ceiling ?? null;
+  const declaredDowngrades = Array.isArray(manifest?.downgraded_by)
+    ? manifest.downgraded_by
+    : [];
+
+  for (const [name, declaration] of Object.entries(DOC_DECLARATION)) {
+    const text = contents.get(name)?.toString("utf8");
+    if (!text) {
+      add("docs.section.missing", name, "das Dokument fehlt im Paket");
+      continue;
+    }
+
+    const ceiling = declaration.ceiling.exec(text);
+    if (!ceiling) {
+      add(
+        "docs.ceiling.mismatch",
+        name,
+        "das Dokument nennt die Evidenz-Decke nicht in der Form, die das Manifest deklariert",
+      );
+    } else if (ceiling[1] !== declaredCeiling) {
+      add(
+        "docs.ceiling.mismatch",
+        name,
+        `das Dokument behauptet \`${ceiling[1]}\`, das Manifest deklariert \`${declaredCeiling}\``,
+      );
+    }
+
+    const downgrades = declaration.downgrades.exec(text);
+    if (!downgrades) {
+      add(
+        "docs.downgrade.mismatch",
+        name,
+        "das Dokument nennt die Herabstufungen nicht",
+      );
+    } else {
+      const listed = declaredDowngrades.every((reason) =>
+        downgrades[1].includes(reason),
+      );
+      const empty = declaredDowngrades.length === 0;
+      const saysNone = downgrades[1].trim() === "keine";
+      if (empty ? !saysNone : !listed) {
+        add(
+          "docs.downgrade.mismatch",
+          name,
+          `das Manifest deklariert ${empty ? "keine Herabstufung" : declaredDowngrades.join(", ")}, das Dokument sagt \`${downgrades[1].trim()}\``,
+        );
+      }
+    }
+
+    const countLine = declaration.counts.exec(text);
+    if (!countLine) {
+      add(
+        "docs.claim_count.mismatch",
+        name,
+        "das Dokument nennt die Claim-Zählung nicht",
+      );
+    } else {
+      const expected = [claims.length, counts.observed, counts.derived, counts.assumed];
+      const parsed = countLine.slice(1).map(Number);
+      if (parsed.join() !== expected.join()) {
+        add(
+          "docs.claim_count.mismatch",
+          name,
+          `das Dokument zählt ${parsed[0]} gesamt · ${parsed.slice(1).join("/")}, Blueprint führt ${claims.length} gesamt · ${[counts.observed, counts.derived, counts.assumed].join("/")}`,
+        );
+      }
+    }
+
+    for (const heading of declaration.sections) {
+      if (!text.includes(heading)) {
+        add("docs.section.missing", `${name}#${heading}`, "der Abschnitt fehlt");
+      }
+    }
+
+    // An empty category has to say that it is empty: silence reads like an
+    // unmarked assumption.
+    if (counts.assumed === 0 && !declaration.emptyAssumed.test(text)) {
+      add(
+        "docs.section.empty_unmarked",
+        `${name}#assumed`,
+        "die Kategorie assumed ist leer, wird aber nicht ausdrücklich als leer ausgewiesen",
+      );
+    }
+  }
+}
 
 async function listFiles(root, prefix = "") {
   const names = [];
@@ -134,7 +262,12 @@ export async function verifyPackageDir(root) {
       root,
       files: [],
       references: { total: 0, resolved: 0, unresolved: [] },
-      claims: { total: 0, hashed: 0, mismatched: 0 },
+      claims: {
+        total: 0,
+        hashed: 0,
+        mismatched: 0,
+        selectors: { checked: 0, unresolved: 0 },
+      },
       gate: null,
       violations: [
         {
@@ -206,23 +339,113 @@ export async function verifyPackageDir(root) {
   const claims = Array.isArray(blueprint?.claims) ? blueprint.claims : [];
   let hashed = 0;
   let mismatched = 0;
+  const selectors = { checked: 0, unresolved: 0 };
   for (const claim of claims) {
     for (const ref of Array.isArray(claim?.evidence) ? claim.evidence : []) {
-      if (typeof ref?.sha256 !== "string" || ref.sha256 === "") continue;
-      hashed += 1;
-      const target = normaliseReference(ref.path);
+      const target = normaliseReference(ref?.path);
       const path = target?.path;
-      const actual = path && fileSet.has(path) ? digest(read(path)) : null;
-      if (actual !== ref.sha256) {
-        mismatched += 1;
+      const present = Boolean(path && fileSet.has(path));
+      if (typeof ref?.sha256 === "string" && ref.sha256 !== "") {
+        hashed += 1;
+        const actual = present ? digest(read(path)) : null;
+        if (actual !== ref.sha256) {
+          mismatched += 1;
+          add(
+            "claim.evidence.hash_mismatch",
+            claim.id,
+            `evidence ${ref.path} has ${actual ?? "no bytes"}, the claim records ${ref.sha256}`,
+          );
+        }
+      }
+      // The digest proves the bytes; the selector proves the claim points at
+      // something inside them. A package that hashes correctly can still cite a
+      // node, request or pointer it does not contain.
+      selectors.checked += 1;
+      if (!target || target.directory || !present) {
+        // A missing file is `claim.evidence.unresolved`, which the gate reports:
+        // one defect keeps one code, so the two checks never double-report.
+        selectors.unresolved += 1;
+        continue;
+      }
+      const resolved = resolveEvidence(ref, read);
+      if (!resolved.ok) {
+        selectors.unresolved += 1;
         add(
-          "claim.evidence.hash_mismatch",
+          "claim.evidence.selector_unresolved",
           claim.id,
-          `evidence ${ref.path} has ${actual ?? "no bytes"}, the claim records ${ref.sha256}`,
+          `${ref.path}: ${resolved.reason}`,
         );
       }
     }
   }
+
+  // The manifest declares the fixed denominator, so the unpacked package can be
+  // audited against it: a removed, added or reclassified unit must not lower the
+  // denominator quietly. Totals and per-class counts are compared separately,
+  // because they mean different defects.
+  const declared = manifest?.denominators ?? null;
+  if (!manifest?.determinism) {
+    add(
+      "manifest.determinism.undeclared",
+      MANIFEST,
+      "the manifest does not declare its determinism rule",
+    );
+  }
+  if (!declared || !Array.isArray(declared.classes)) {
+    add(
+      "manifest.denominator.undeclared",
+      MANIFEST,
+      "the manifest does not declare the fixed denominator",
+    );
+  } else {
+    const ledgerEntries = Array.isArray(ledger?.entries) ? ledger.entries : [];
+    const actualByClass = new Map();
+    for (const entry of ledgerEntries) {
+      actualByClass.set(entry.class, (actualByClass.get(entry.class) ?? 0) + 1);
+    }
+    const declaredByClass = new Map(
+      declared.classes.map((item) => [item.class, item.items]),
+    );
+    const missing = [];
+    const extra = [];
+    for (const [cls, items] of declaredByClass) {
+      const actual = actualByClass.get(cls) ?? 0;
+      if (actual < items) missing.push(`${cls}: ${items - actual} fehlt`);
+      if (actual > items) extra.push(`${cls}: ${actual - items} zu viel`);
+    }
+    for (const [cls, actual] of actualByClass) {
+      if (!declaredByClass.has(cls)) extra.push(`${cls}: ${actual} nicht deklariert`);
+    }
+    const declaredTotal = Number.isInteger(declared.total)
+      ? declared.total
+      : [...declaredByClass.values()].reduce((sum, item) => sum + item, 0);
+    const actualTotal = ledgerEntries.length;
+    if (actualTotal < declaredTotal) {
+      add(
+        "ledger.unit.missing",
+        missing.length > 0 ? missing.join(", ") : "ledger",
+        `der Nenner deklariert ${declaredTotal} Einheit(en), das Ledger führt ${actualTotal}; ${declaredTotal - actualTotal} geforderte Einheit(en) fehlen`,
+      );
+    } else if (actualTotal > declaredTotal) {
+      add(
+        "ledger.unit.unexpected",
+        extra.length > 0 ? extra.join(", ") : "ledger",
+        `der Nenner deklariert ${declaredTotal} Einheit(en), das Ledger führt ${actualTotal}; ${actualTotal - declaredTotal} nicht gedeckte Einheit(en)`,
+      );
+    } else if (missing.length > 0 || extra.length > 0) {
+      add(
+        "ledger.unit.reclassified",
+        [...missing, ...extra].join(", "),
+        "die Gesamtzahl stimmt, aber die Verteilung auf die Kategorien weicht von der deklarierten Zählung ab",
+      );
+    }
+  }
+
+  // The documents declare what the package can prove, so the check reads those
+  // declarations back instead of trusting the prose: ceiling, every downgrade
+  // reason and the claim count per kind must match the manifest and blueprint,
+  // and each claim kind keeps its own readable section even when it is empty.
+  checkDeclarations({ manifest, blueprint, contents, add });
 
   // Every document the package ships is scanned, not just the two main ones: a
   // spec that points at a missing file is exactly the dangling reference this
@@ -268,7 +491,13 @@ export async function verifyPackageDir(root) {
       renderMarkdown: () =>
         renderMarkdown({ blueprint, claims: blueprint.claims ?? [] }),
     });
-    violations.push(...gateResult.violations);
+    // Selector findings were already collected above from the same bytes; the
+    // gate would repeat them. Merge only its other verdicts so each defect has
+    // exactly one report.
+    for (const item of gateResult.violations) {
+      if (item.code === "claim.evidence.selector_unresolved") continue;
+      violations.push(item);
+    }
   }
 
   return {
@@ -280,7 +509,7 @@ export async function verifyPackageDir(root) {
       resolved: references.length - unresolved.length,
       unresolved,
     },
-    claims: { total: claims.length, hashed, mismatched },
+    claims: { total: claims.length, hashed, mismatched, selectors },
     gate: gateResult
       ? {
           ok: gateResult.ok,

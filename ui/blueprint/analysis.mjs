@@ -29,7 +29,12 @@ import {
   makeClaim,
   sortClaims,
 } from "./claims.mjs";
-import { webDomItems, webRequestItems } from "./denominators/web.mjs";
+import {
+  webAssetItems,
+  webDomItems,
+  webRequestItems,
+  webRouteItems,
+} from "./denominators/web.mjs";
 
 const DIGEST_FIELDS = [
   "target",
@@ -149,11 +154,16 @@ const MAX_OBSERVED_NODES = 200;
 /**
  * `observed` claims for what the capture actually recorded.
  *
- * Each request and each interactive DOM node becomes one claim whose evidence
- * selector names exactly the item the ledger enumerates (spec §5). Without them
- * the `http` and `dom` acceptance kinds could never be emitted, and the `request`
- * and `dom-node` denominators could never be covered — the package would carry
- * check kinds that no run can produce.
+ * Each request, interactive DOM node, referenced asset and named route becomes
+ * one claim whose evidence selector names exactly the item the ledger enumerates
+ * (spec §5). Without them the `http` and `dom` acceptance kinds could never be
+ * emitted, and the `request`, `dom-node`, `asset` and `route` denominators could
+ * never be covered — the package would carry check kinds that no run can produce.
+ *
+ * An asset and a route are facts about the packaged recording (the DOM references
+ * the file, the capture names the URL), so they carry the static ceiling: their
+ * presence is re-derivable from the package, while the `executed` part — that the
+ * page answered — stays with the acceptance criterion that replays it.
  */
 function webObservationUnits(targetClass, ceiling, facts) {
   const groups = [
@@ -171,6 +181,26 @@ function webObservationUnits(targetClass, ceiling, facts) {
         `${item.subject} ist im aufgenommenen DOM vorhanden.`,
       limit: "nur beim Aufnehmen sichtbare interaktive Knoten",
     },
+    {
+      cls: "asset",
+      items: webAssetItems(facts),
+      statement: (item) =>
+        `${item.subject} wird vom aufgenommenen DOM referenziert.`,
+      limit: "nur im DOM referenzierte Assets",
+      ceiling: "statically-evidenced",
+    },
+    {
+      cls: "route",
+      items: webRouteItems(facts),
+      statement: (item) =>
+        `${item.subject} ist in der Aufnahme als geladene Seite belegt.`,
+      limit:
+        "nur Ziele aufgezeichneter Schritte und statisch gefundene Routen",
+      ceiling: "statically-evidenced",
+      // A pointer observation has no acceptance kind of its own; the route
+      // criterion replays the URLs, so the ledger entry is the falsifier here.
+      falsifier: (item) => `gap:route:${item.subject}`,
+    },
   ];
   const units = [];
   for (const group of groups) {
@@ -181,12 +211,12 @@ function webObservationUnits(targetClass, ceiling, facts) {
           id,
           statement: group.statement(item),
           kind: "observed",
-          ceiling,
+          ceiling: group.ceiling ?? ceiling,
           subject: item.pointer,
           evidence: [
             { path: item.source.path, selector: { ...item.source.selector } },
           ],
-          falsifier: `acceptance.${id}`,
+          falsifier: group.falsifier ? group.falsifier(item) : `acceptance.${id}`,
           limits: [group.limit],
         }),
         entry: {

@@ -105,6 +105,71 @@ test("hashes cover raw bytes and paths normalise to forward slashes", () => {
   );
 });
 
+test("buildManifest records the requested ceiling and its forcing probes", () => {
+  const manifest = build({
+    ceiling: "statically-evidenced",
+    ceiling_requested: "executed",
+    downgraded_by: ["apk:no-execution-grant"],
+  });
+  assert.equal(manifest.ceiling, "statically-evidenced");
+  assert.equal(manifest.ceiling_requested, "executed");
+  assert.deepEqual(manifest.downgraded_by, ["apk:no-execution-grant"]);
+});
+
+test("the manifest declares the fixed denominator and its determinism rule", () => {
+  const manifest = build({
+    denominators: [
+      { class: "request", probe: "web.request-scan", items: 2, blind_spots: [] },
+      { class: "asset", probe: "web.asset-scan", items: 1 },
+    ],
+  });
+  assert.deepEqual(manifest.denominators, {
+    total: 3,
+    classes: [
+      { class: "asset", items: 1, probe: "web.asset-scan" },
+      { class: "request", items: 2, probe: "web.request-scan" },
+    ],
+  });
+  assert.equal(typeof manifest.determinism.sort, "string");
+  assert.equal(typeof manifest.determinism.produced_at, "string");
+  assert.equal(typeof manifest.determinism.zip_timestamps, "string");
+  assert.equal(typeof manifest.determinism.clock, "string");
+  assert.deepEqual(manifest.determinism.scope, {
+    ceiling: "executed",
+    downgraded_by: [],
+  });
+});
+
+test("a malformed denominator declaration is refused, not repaired", () => {
+  assert.throws(() => build({ denominators: {} }), /denominators/);
+  assert.throws(
+    () => build({ denominators: [{ class: "a", items: -1, probe: "x.y" }] }),
+    /items/,
+  );
+  assert.throws(
+    () =>
+      build({
+        denominators: [
+          { class: "a", items: 1, probe: "x.y" },
+          { class: "a", items: 1, probe: "x.z" },
+        ],
+      }),
+    /twice/,
+  );
+});
+
+test("the downgrade defaults keep existing call sites valid and refuse junk", () => {
+  const manifest = build();
+  assert.equal(manifest.ceiling_requested, "executed");
+  assert.deepEqual(manifest.downgraded_by, []);
+  assert.throws(() => build({ downgraded_by: "apk" }), /downgraded_by/);
+  assert.throws(() => build({ downgraded_by: ["apk"] }), /downgraded_by/);
+  assert.throws(
+    () => build({ ceiling_requested: "certain" }),
+    /ceiling_requested/,
+  );
+});
+
 test("buildManifest refuses paths that leave the package or repeat", () => {
   assert.throws(
     () => build({ files: { "../escape.txt": Buffer.from("x") } }),

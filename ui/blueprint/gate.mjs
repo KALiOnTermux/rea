@@ -11,11 +11,13 @@
  */
 
 import { CEILING_ORDER } from "./ceiling.mjs";
+import { resolveEvidence } from "./evidence.mjs";
 import { closure, ledgerViolations, OUT_OF_SCOPE_SHARE } from "./ledger.mjs";
 import { verifyManifest } from "./manifest.mjs";
 
 export const VIOLATION_CODES = [
   "claim.evidence.unresolved",
+  "claim.evidence.selector_unresolved",
   "claim.observed.without_evidence",
   "claim.derived.without_derivation",
   "claim.derived.forward_reference",
@@ -92,7 +94,7 @@ function reachesItself(start, byId) {
   return false;
 }
 
-function checkEvidence(claim, files, violations) {
+function checkEvidence(claim, files, violations, readFile) {
   const evidence = asArray(claim.evidence);
   if (claim.kind === "observed" && evidence.length === 0) {
     violations.push(
@@ -110,6 +112,20 @@ function checkEvidence(claim, files, violations) {
           "claim.evidence.unresolved",
           claim.id,
           `evidence ${ref.path} is not part of the package`,
+        ),
+      );
+      continue;
+    }
+    // A packaged path is not a proof of the claim: the selector has to resolve
+    // inside those bytes, otherwise the package cites a node it does not carry.
+    if (typeof readFile !== "function") continue;
+    const resolved = resolveEvidence(ref, readFile);
+    if (!resolved.ok) {
+      violations.push(
+        violation(
+          "claim.evidence.selector_unresolved",
+          claim.id,
+          `${ref.path}: ${resolved.reason}`,
         ),
       );
     }
@@ -240,7 +256,7 @@ function checkClaims({
   const entries = new Set(asArray(ledger?.entries).map((entry) => entry.id));
   const runCeiling = blueprint?.ceiling?.ceiling;
   for (const claim of claims) {
-    checkEvidence(claim, files, violations);
+    checkEvidence(claim, files, violations, ctx?.readFile);
     checkDerivation(claim, byId, violations);
     checkAssumption(claim, violations);
     checkCeiling(claim, runCeiling, violations);

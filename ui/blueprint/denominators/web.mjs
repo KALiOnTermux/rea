@@ -54,30 +54,21 @@ function routeItems(facts) {
       },
     }),
   );
-  const navigation = asArray(facts?.behavior?.navigation).map(
-    (entry, index) => ({
-      subject: `GET ${entry.url || index}`,
-      pointer: `/behavior/navigation/${index}`,
-      source: {
-        path: CAPTURE_SOURCE,
-        selector: {
-          type: "pointer",
-          pointer: `/behavior/navigation/${index}`,
-        },
-      },
-    }),
-  );
+  // Every route selector has to resolve in a file the package really ships, so
+  // each item cites the capture entry that records the URL: `/url`,
+  // `/final_url` and `/steps/<i>/after_url` are the capture's own keys. A
+  // separately recorded history is not enumerated; the blind spot says why.
   const steps = asArray(facts?.behavior?.steps)
     .map((step, index) =>
       step?.after_url
         ? {
             subject: `GET ${step.after_url}`,
-            pointer: `/behavior/steps/${index}/after_url`,
+            pointer: `/steps/${index}/after_url`,
             source: {
               path: CAPTURE_SOURCE,
               selector: {
                 type: "pointer",
-                pointer: `/behavior/steps/${index}/after_url`,
+                pointer: `/steps/${index}/after_url`,
               },
             },
           }
@@ -85,22 +76,22 @@ function routeItems(facts) {
     )
     .filter(Boolean);
   // The captured start and landing URL are routes the run really loaded, so a
-  // capture without navigation still names at least the page it was taken on.
+  // capture without steps still names at least the page it was taken on.
   const pages = [
-    ["/surface/url", facts?.surface?.url],
-    ["/surface/final_url", facts?.surface?.final_url],
+    ["/url", facts?.surface?.url],
+    ["/final_url", facts?.surface?.final_url],
   ]
     .filter(([, url]) => url)
     .map(([pointer, url]) => ({
       subject: `GET ${url}`,
       pointer,
       source: {
-        path: DOM_SOURCE,
+        path: CAPTURE_SOURCE,
         selector: { type: "pointer", pointer },
       },
     }));
   const seen = new Set();
-  return [...staticRoutes, ...pages, ...navigation, ...steps].filter((item) => {
+  return [...staticRoutes, ...pages, ...steps].filter((item) => {
     if (seen.has(item.subject)) return false;
     seen.add(item.subject);
     return true;
@@ -228,6 +219,7 @@ const BLIND_SPOTS = {
   ],
   route: [
     "Routen, die erst zur Laufzeit aus einer Zeichenkette entstehen, lassen sich statisch nicht enumerieren.",
+    "Ein separat erfasster Verlauf (history) wird hier nicht als eigene Route gezählt; belegt sind die Ziele der aufgezeichneten Schritte und die statisch gefundenen Routen.",
   ],
 };
 
@@ -245,6 +237,16 @@ function enumerate(analysis, cls) {
 /** Every captured request, in capture order, with its selector. */
 export function webRequestItems(facts) {
   return requestItems(facts ?? {});
+}
+
+/** Every asset the captured DOM references, with its DOM selector. */
+export function webAssetItems(facts) {
+  return assetItems(facts ?? {});
+}
+
+/** Every route the capture names, with the pointer that records it. */
+export function webRouteItems(facts) {
+  return routeItems(facts ?? {});
 }
 
 /** Every interactive DOM node the capture recorded, with its selector. */

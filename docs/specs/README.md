@@ -36,3 +36,5 @@ for new work, roadmap granularity and producer-owned contracts.
 - [Native initializers](native/native-initializers/spec.md) ([plan](native/native-initializers/plan.md), [tasks](native/native-initializers/tasks.md))
 
 - [Release exposure audit](artifacts/release-exposure/spec.md) ([plan](artifacts/release-exposure/plan.md), [tasks](artifacts/release-exposure/tasks.md))
+- [Blueprint claim compiler](blueprint/claim-compiler/spec.md) ([plan](blueprint/claim-compiler/plan.md), [tasks](blueprint/claim-compiler/tasks.md))
+- [Blueprint evidence selector verification](blueprint/evidence-selector-verification/spec.md) ([plan](blueprint/evidence-selector-verification/plan.md), [tasks](blueprint/evidence-selector-verification/tasks.md))

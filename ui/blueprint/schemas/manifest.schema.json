@@ -9,6 +9,10 @@
     "schema",
     "schema_version",
     "ceiling",
+    "ceiling_requested",
+    "downgraded_by",
+    "denominators",
+    "determinism",
     "compiler",
     "produced_at",
     "digests",
@@ -20,6 +24,61 @@
     "ceiling": {
       "type": "string",
       "enum": ["executed", "statically-evidenced", "inferred-only"]
+    },
+    "ceiling_requested": {
+      "type": "string",
+      "enum": ["executed", "statically-evidenced", "inferred-only"]
+    },
+    "downgraded_by": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*:[a-z0-9-]+$" }
+    },
+    "denominators": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "classes"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["class", "items", "probe"],
+            "properties": {
+              "class": { "type": "string", "minLength": 1 },
+              "items": { "type": "integer", "minimum": 0 },
+              "probe": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sort", "produced_at", "zip_timestamps", "clock", "scope"],
+      "properties": {
+        "sort": { "type": "string", "minLength": 1 },
+        "produced_at": { "type": "string", "minLength": 1 },
+        "zip_timestamps": { "type": "string", "minLength": 1 },
+        "clock": { "type": "string", "minLength": 1 },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ceiling", "downgraded_by"],
+          "properties": {
+            "ceiling": {
+              "type": "string",
+              "enum": ["executed", "statically-evidenced", "inferred-only"]
+            },
+            "downgraded_by": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*:[a-z0-9-]+$" }
+            }
+          }
+        }
+      }
     },
     "compiler": { "type": "string", "minLength": 1 },
     "analysis_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },

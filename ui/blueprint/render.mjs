@@ -9,6 +9,24 @@
  * The module is pure: it reads only the compiled object it is given.
  */
 
+/**
+ * What supports a claim: the files it cites, the claims it was derived from, or
+ * the assumption it states. A derived claim has no direct file reference by
+ * design, so the document must not call it "kein Beleg".
+ */
+function supportOf(claim) {
+  const refs = (claim.evidence ?? []).map((entry) => `\`${entry.path}\``);
+  if (refs.length > 0) return refs.join(", ");
+  if (claim.derivation) {
+    // Input ids stay in the derived section: naming them here would leak one
+    // claim id into another kind's section and blur the separation.
+    const count = (claim.derivation.inputs ?? []).length;
+    return `abgeleitet aus ${count} Eingabe(n)`;
+  }
+  if (claim.assumption) return "Annahme, kein direkter Beleg";
+  return "kein Beleg";
+}
+
 /** Renders sections 5-7, the three claim kinds, as Markdown lines. */
 export function renderClaimsSection(claims) {
   const lines = [];
@@ -41,10 +59,7 @@ export function renderClaimsSection(claims) {
       lines.push(claim.statement, "");
       lines.push(`- **Ceiling:** ${claim.ceiling}`);
       if (claim.subject) lines.push(`- **Subjekt:** \`${claim.subject}\``);
-      const refs = claim.evidence.map((entry) => `\`${entry.path}\``);
-      lines.push(
-        `- **Beleg:** ${refs.length > 0 ? refs.join(", ") : "kein Beleg"}`,
-      );
+      lines.push(`- **Beleg:** ${supportOf(claim)}`);
       if (claim.derivation) {
         lines.push(
           `- **Ableitung:** Regel \`${claim.derivation.rule}\` aus ${claim.derivation.inputs.length} Eingabe(n)`,
@@ -70,8 +85,34 @@ function cell(value) {
     .replace(/\r?\n/g, " ");
 }
 
+/**
+ * The readable mirror of MANIFEST.json: evidence ceiling, every downgrade
+ * reason and the claim count per kind. Package verification parses these lines
+ * back, so their wording is part of the contract, not just prose.
+ */
+function claimDeclaration(compiled, bp) {
+  const claims = Array.isArray(compiled.claims) ? compiled.claims : [];
+  const kindCount = { observed: 0, derived: 0, assumed: 0 };
+  for (const claim of claims) {
+    if (claim.kind in kindCount) kindCount[claim.kind] += 1;
+  }
+  const reasons = bp.ceiling?.downgraded_by ?? [];
+  return {
+    assumed: kindCount.assumed,
+    countLine: `${claims.length} gesamt · ${kindCount.observed} observed · ${kindCount.derived} derived · ${kindCount.assumed} assumed`,
+    downgradeLine:
+      reasons.length === 0
+        ? "keine"
+        : reasons.map((reason) => `\`${reason}\``).join(", "),
+  };
+}
+
 export function renderMarkdown(compiled) {
   const bp = compiled.blueprint;
+  const { countLine: claimCountLine, downgradeLine } = claimDeclaration(
+    compiled,
+    bp,
+  );
   const lines = [];
   const add = (...values) => lines.push(...values);
   const bullet = (value) => add(`- ${value}`);
@@ -104,6 +145,12 @@ export function renderMarkdown(compiled) {
   add(
     `- **Enthaltene Beweise:** ${bp.evidence.length} Datei(en), ${bp.bundle.bytes_raw} Bytes vor Kompression`,
   );
+  add(`- **Evidenz-Decke:** ${bp.ceiling?.ceiling ?? "nicht deklariert"}`);
+  if (bp.ceiling?.requested && bp.ceiling.requested !== bp.ceiling.ceiling) {
+    add(`- **Angefragte Decke:** ${bp.ceiling.requested}`);
+  }
+  add(`- **Herabstufungen:** ${downgradeLine}`);
+  add(`- **Behauptungen:** ${claimCountLine}`);
 
   section("1. Auftrag und Zielbild", () => {
     add(
@@ -132,8 +179,6 @@ export function renderMarkdown(compiled) {
     add(
       `- **Ceiling:** ${bp.ceiling?.ceiling ?? "nicht deklariert"}${bp.ceiling?.requested && bp.ceiling.requested !== bp.ceiling.ceiling ? ` (angefragt: ${bp.ceiling.requested})` : ""}`,
     );
-    for (const reason of bp.ceiling?.downgraded_by ?? [])
-      add(`- **Herabgesetzt:** \`${reason}\``);
     if (bp.gate) {
       add(
         `- **Gate:** ${bp.gate.ok ? "pass" : "fail"} · ${bp.gate.status} · ${bp.gate.violations} Verletzung(en) · Coverage ${bp.gate.coverage}`,
@@ -1075,8 +1120,15 @@ export function renderMarkdown(compiled) {
         const refs = claim.evidence
           .map((entry) => `\`${entry.path}\``)
           .join("<br>");
+        const support =
+          refs ||
+          (claim.derivation
+            ? `abgeleitet aus ${claim.derivation.inputs.length} Eingabe(n)`
+            : claim.assumption
+              ? "Annahme"
+              : "kein Beleg");
         add(
-          `| \`${claim.id}\` | ${claim.kind} | ${claim.ceiling} | ${refs || "kein Beleg"} | \`${claim.falsifier}\` |`,
+          `| \`${claim.id}\` | ${claim.kind} | ${claim.ceiling} | ${support} | \`${claim.falsifier}\` |`,
         );
       }
     });
@@ -1147,6 +1199,8 @@ function agentKindGuide(kind, sourceIncluded = true) {
 
 export function renderPrompt(compiled) {
   const bp = compiled.blueprint;
+  const { assumed, countLine: claimCountLine, downgradeLine } =
+    claimDeclaration(compiled, bp);
   const kind = blueprintKind(bp);
   const guide = agentKindGuide(kind, bp.source_included !== false);
   const counted = `${bp.bundle.files} Dateien, davon ${bp.evidence.length} Beweise`;
@@ -1194,6 +1248,28 @@ export function renderPrompt(compiled) {
     "",
     `Zieltyp: ${kind}${kind !== bp.target.kind ? ` (${bp.target.kind})` : ""}`,
     `Quelle: ${bp.target.input}`,
+    // The agent has to know what the package could and could not prove.
+    `Evidenz-Decke: ${bp.ceiling?.ceiling ?? "nicht deklariert"}`,
+    `Herabstufungen: ${downgradeLine}`,
+    `Behauptungen: ${claimCountLine}`,
+    "",
+    // The four categories stay separately readable for the rebuilding agent,
+    // including the empty ones: an assumed category that is silently absent
+    // reads like an unmarked assumption.
+    "## Evidenzlage (verbindlich)",
+    "Beobachtet (observed): belegt durch Dateien im Paket.",
+    "Abgeleitet (derived): aus belegten Bytes rekonstruiert.",
+    assumed === 0
+      ? "Angenommen (assumed): keine Annahme im Paket; jede neue Annahme ist zu kennzeichnen und zu prüfen."
+      : "Angenommen (assumed): jede Annahme nennt Wirkung und Prüfschritt.",
+    bp.open_questions.length === 0
+      ? "Offene Lücken: keine im Rahmen dieser Erhebung."
+      : "Offene Lücken: Abschnitt 9 der Blaupause ist die Arbeitsliste.",
+    ...(bp.closure
+      ? [
+          `Closure: ${bp.closure.covered} von ${bp.closure.covered + bp.closure.gap + bp.closure.out_of_scope} Einheiten belegt (Ratio ${bp.closure.ratio})`,
+        ]
+      : []),
     `Offene Punkte: ${bp.open_questions.length}`,
   ].join("\n");
 }

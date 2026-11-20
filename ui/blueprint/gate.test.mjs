@@ -4,7 +4,18 @@ import { makeClaim } from "./claims.mjs";
 import { BlueprintGateError, VIOLATION_CODES, gate } from "./gate.mjs";
 import { buildManifest } from "./manifest.mjs";
 
-const DOCS = { "BLUEPRINT.md": "# x", "blueprint.json": "{}" };
+const CAPTURE = JSON.stringify({
+  events: {
+    items: [{ kind: "request", method: "GET", url: "/api/orders" }],
+  },
+});
+const DOCS = {
+  "BLUEPRINT.md": "# x",
+  "blueprint.json": "{}",
+  // The reader must return real bytes: the gate now resolves each claim's
+  // selector, and a claim whose evidence holds no bytes proves nothing.
+  "evidence/web-capture.json": CAPTURE,
+};
 
 const observedClaim = () =>
   makeClaim({
@@ -346,10 +357,14 @@ test("a closed package passes the gate", () => {
 });
 
 test("every violation code is declared", () => {
-  assert.equal(VIOLATION_CODES.length, 17);
+  assert.equal(VIOLATION_CODES.length, 18);
   for (const row of ROWS) {
     assert.equal(VIOLATION_CODES.includes(row.code), true, row.code);
   }
+  assert.equal(
+    VIOLATION_CODES.includes("claim.evidence.selector_unresolved"),
+    true,
+  );
 });
 
 for (const row of ROWS) {
@@ -380,6 +395,39 @@ test("a ledger entry whose source is not packaged is unknown", () => {
     [...new Set(result.violations.map((violation) => violation.code))],
     ["ledger.item.unknown"],
   );
+});
+
+const DOM = '<button id="buy">Kaufen</button>';
+
+/** Adds a claim whose only evidence is `surface/dom.html` and resolves it. */
+function withDomClaim(pkg, selector) {
+  pkg.ctx.files.push("surface/dom.html");
+  pkg.ctx.readFile = (path) =>
+    path === "surface/dom.html" ? DOM : DOCS[path];
+  return addClaim(
+    pkg,
+    rawClaim({
+      id: "web.dom.buy",
+      subject: "/facts/behavior/dom/0",
+      evidence: [{ path: "surface/dom.html", selector }],
+    }),
+  );
+}
+
+test("a claim whose DOM selector resolves nowhere is refused", () => {
+  const pkg = withDomClaim(base(), { type: "dom", path: "#missing" });
+  const result = run(pkg);
+  assert.notEqual(result.status, "complete");
+  assert.deepEqual(
+    [...new Set(result.violations.map((violation) => violation.code))],
+    ["claim.evidence.selector_unresolved"],
+  );
+  assert.equal(result.violations[0].subject, "web.dom.buy");
+});
+
+test("the same claim passes when the DOM node is present", () => {
+  const pkg = withDomClaim(base(), { type: "dom", path: "#buy" });
+  assert.deepEqual(run(pkg).violations, []);
 });
 
 test("a stale closure block cannot claim completeness", () => {
