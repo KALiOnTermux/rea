@@ -15,6 +15,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
+import { CEILING_ORDER } from "./ceiling.mjs";
 import { resolveEvidence } from "./evidence.mjs";
 import { gate } from "./gate.mjs";
 import { verifyManifest } from "./manifest.mjs";
@@ -30,7 +31,8 @@ const DOC_DECLARATION = {
   "BLUEPRINT.md": {
     ceiling: /^- \*\*Evidenz-Decke:\*\* (\S+)$/m,
     downgrades: /^- \*\*Herabstufungen:\*\* (.+)$/m,
-    counts: /^- \*\*Behauptungen:\*\* (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
+    counts:
+      /^- \*\*Behauptungen:\*\* (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
     sections: [
       "## 5. Beobachtet (observed)",
       "## 6. Abgeleitet (derived)",
@@ -42,7 +44,8 @@ const DOC_DECLARATION = {
   "AGENT-PROMPT.md": {
     ceiling: /^Evidenz-Decke: (\S+)$/m,
     downgrades: /^Herabstufungen: (.+)$/m,
-    counts: /^Behauptungen: (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
+    counts:
+      /^Behauptungen: (\d+) gesamt · (\d+) observed · (\d+) derived · (\d+) assumed$/m,
     sections: [
       "## Evidenzlage (verbindlich)",
       "Beobachtet (observed): ",
@@ -53,6 +56,34 @@ const DOC_DECLARATION = {
     emptyAssumed: /Angenommen \(assumed\): keine Annahme/,
   },
 };
+
+/**
+ * Compares each claim's ceiling with the ceiling the manifest declares.
+ *
+ * The gate compares claims with the blueprint's run ceiling, but the manifest is
+ * the promise a reader takes from the archive. A package whose manifest says
+ * `statically-evidenced` may not ship an `executed` claim, even when the
+ * blueprint still says `executed`: the rebuild would trust a proof the archive
+ * does not claim to hold. A claim that also exceeds the run ceiling is left to
+ * `claim.ceiling.exceeds_run`, so one defect keeps one code.
+ */
+export function checkClaimCeilings({ manifest, blueprint, add }) {
+  const declared = CEILING_ORDER.indexOf(manifest?.ceiling);
+  if (declared < 0) return;
+  const run = CEILING_ORDER.indexOf(blueprint?.ceiling?.ceiling);
+  for (const claim of Array.isArray(blueprint?.claims)
+    ? blueprint.claims
+    : []) {
+    const ceiling = CEILING_ORDER.indexOf(claim?.ceiling);
+    if (ceiling < 0 || ceiling <= declared) continue;
+    if (run >= 0 && ceiling > run) continue;
+    add(
+      "claim.ceiling.exceeds_manifest",
+      claim.id,
+      `claim ceiling ${claim.ceiling} exceeds the manifest ceiling ${manifest.ceiling}`,
+    );
+  }
+}
 
 /**
  * Compares the documents' own declarations with the manifest and the claims.
@@ -122,7 +153,12 @@ export function checkDeclarations({ manifest, blueprint, contents, add }) {
         "das Dokument nennt die Claim-Zählung nicht",
       );
     } else {
-      const expected = [claims.length, counts.observed, counts.derived, counts.assumed];
+      const expected = [
+        claims.length,
+        counts.observed,
+        counts.derived,
+        counts.assumed,
+      ];
       const parsed = countLine.slice(1).map(Number);
       if (parsed.join() !== expected.join()) {
         add(
@@ -135,7 +171,11 @@ export function checkDeclarations({ manifest, blueprint, contents, add }) {
 
     for (const heading of declaration.sections) {
       if (!text.includes(heading)) {
-        add("docs.section.missing", `${name}#${heading}`, "der Abschnitt fehlt");
+        add(
+          "docs.section.missing",
+          `${name}#${heading}`,
+          "der Abschnitt fehlt",
+        );
       }
     }
 
@@ -414,7 +454,8 @@ export async function verifyPackageDir(root) {
       if (actual > items) extra.push(`${cls}: ${actual - items} zu viel`);
     }
     for (const [cls, actual] of actualByClass) {
-      if (!declaredByClass.has(cls)) extra.push(`${cls}: ${actual} nicht deklariert`);
+      if (!declaredByClass.has(cls))
+        extra.push(`${cls}: ${actual} nicht deklariert`);
     }
     const declaredTotal = Number.isInteger(declared.total)
       ? declared.total
@@ -440,6 +481,10 @@ export async function verifyPackageDir(root) {
       );
     }
   }
+
+  // The manifest is the archive's promise about what it proves, so no claim may
+  // stand above it.
+  checkClaimCeilings({ manifest, blueprint, add });
 
   // The documents declare what the package can prove, so the check reads those
   // declarations back instead of trusting the prose: ceiling, every downgrade

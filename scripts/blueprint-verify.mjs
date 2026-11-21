@@ -9,7 +9,8 @@
 
 import { verifyPackageDir } from "../ui/blueprint/package-verify.mjs";
 
-const USAGE = `Usage: npm run blueprint:verify -- <paketverzeichnis>
+const USAGE = `Usage: node scripts/blueprint-verify.mjs <paketverzeichnis>
+       node audit/scripts/blueprint-verify.mjs <paketverzeichnis>  (im Paket)
 
 Prüft ein entpacktes Blaupausen-Paket ohne Repo-Kontext: Gate, Manifest-Hashes,
 Claim-sha256 und alle im Paket referenzierten Pfade.`;

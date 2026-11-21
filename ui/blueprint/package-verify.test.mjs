@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   cp,
   mkdtemp,
@@ -10,17 +12,25 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { test } from "vitest";
 import { buildBlueprint } from "../blueprint.mjs";
 import { buildManifest } from "./manifest.mjs";
-import { checkDeclarations, verifyPackageDir } from "./package-verify.mjs";
+import {
+  checkClaimCeilings,
+  checkDeclarations,
+  verifyPackageDir,
+} from "./package-verify.mjs";
+import { mutatePackage, PROOFS } from "./proofs.mjs";
 import { renderMarkdown, renderPrompt } from "./render.mjs";
 
 const FIXTURE = fileURLToPath(
   new URL("./corpus/web-fixture/", import.meta.url),
 );
+const run = promisify(execFile);
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-async function buildPackage() {
+async function buildPackage({ generatedAt } = {}) {
   const artifactsDir = await mkdtemp(join(tmpdir(), "rea-verify-build-"));
   const result = await buildBlueprint({
     kind: "web",
@@ -29,6 +39,7 @@ async function buildPackage() {
     artifactsDir,
     includeSources: false,
     reaVersion: "verify",
+    generatedAt,
     onProgress: () => {},
   });
   return result;
@@ -236,7 +247,10 @@ test("an unmarked empty category is a violation", () => {
 
 test("a downgrade the manifest does not declare fails", async () => {
   const root = await withDocEdit("BLUEPRINT.md", (text) =>
-    text.replace("**Herabstufungen:** keine", "**Herabstufungen:** `apk:no-grant`"),
+    text.replace(
+      "**Herabstufungen:** keine",
+      "**Herabstufungen:** `apk:no-grant`",
+    ),
   );
   const report = await verifyPackageDir(root);
   assert.equal(report.ok, false);
@@ -295,9 +309,7 @@ test("a reclassified unit is reported as a class mismatch", async () => {
   const report = await verifyPackageDir(root);
   assert.equal(report.ok, false);
   assert.equal(
-    report.violations.some(
-      (item) => item.code === "ledger.unit.reclassified",
-    ),
+    report.violations.some((item) => item.code === "ledger.unit.reclassified"),
     true,
     JSON.stringify(report.violations),
   );
@@ -344,6 +356,11 @@ test("a package verifies outside the repository", async () => {
     "flows/flows.json",
     "specs/ui.md",
     "specs/logic.md",
+    "audit/mutate.mjs",
+    "audit/proofs.json",
+    "audit/README.md",
+    "audit/scripts/blueprint-verify.mjs",
+    "audit/ui/blueprint/package-verify.mjs",
     "schemas/claims.schema.json",
     "schemas/ledger.schema.json",
     "schemas/manifest.schema.json",
@@ -411,5 +428,191 @@ test("the package parts are deterministic across two builds", async () => {
       readFile(join(second.dir, name), "utf8"),
     ]);
     assert.equal(a, b, name);
+  }
+});
+
+test("produced_at changes the timestamp and nothing else", async () => {
+  const first = await buildPackage({ generatedAt: "2026-11-20T00:00:00.000Z" });
+  const second = await buildPackage({
+    generatedAt: "2031-01-02T03:04:05.000Z",
+  });
+  assert.notEqual(first.manifest.produced_at, second.manifest.produced_at);
+
+  // Every part is byte-identical; only the manifest names the run's timestamp.
+  const parts = async (dir) =>
+    (await walk(dir)).filter((name) => !name.endsWith(".zip")).sort();
+  const names = await parts(first.dir);
+  assert.deepEqual(await parts(second.dir), names);
+  for (const name of names.filter((part) => part !== "MANIFEST.json")) {
+    const [a, b] = await Promise.all([
+      readFile(join(first.dir, name)),
+      readFile(join(second.dir, name)),
+    ]);
+    assert.equal(a.equals(b), true, name);
+  }
+
+  // Pinning the second manifest back to the first timestamp yields the same
+  // document: no digest, file entry or determinism sentence depends on the clock.
+  assert.deepEqual(second.manifest.digests, first.manifest.digests);
+  assert.deepEqual(second.manifest.files, first.manifest.files);
+  assert.deepEqual(
+    { ...second.manifest, produced_at: first.manifest.produced_at },
+    first.manifest,
+  );
+
+  // The archive is not byte-identical, because the manifest and the ZIP headers
+  // both name the timestamp — exactly the two places the rule allows.
+  const [zipA, zipB] = await Promise.all([
+    readFile(first.zipPath),
+    readFile(second.zipPath),
+  ]);
+  assert.equal(zipA.equals(zipB), false);
+});
+
+test("a claim above the manifest ceiling is its own defect", async () => {
+  const result = await buildPackage();
+  const root = await unpack(result);
+  const path = join(root, "MANIFEST.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.ceiling = "statically-evidenced";
+  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const report = await verifyPackageDir(root);
+  assert.equal(report.ok, false);
+  const found = report.violations.filter(
+    (item) => item.code === "claim.ceiling.exceeds_manifest",
+  );
+  assert.equal(found.length > 0, true, JSON.stringify(report.violations));
+  assert.equal(
+    found.every((item) => item.detail.includes("statically-evidenced")),
+    true,
+  );
+});
+
+test("a claim that also exceeds the run ceiling keeps the gate's code", () => {
+  const violations = [];
+  checkClaimCeilings({
+    manifest: { ceiling: "statically-evidenced" },
+    blueprint: {
+      ceiling: { ceiling: "statically-evidenced" },
+      claims: [{ id: "claim", ceiling: "executed" }],
+    },
+    add: (code, subject, detail) => violations.push({ code, subject, detail }),
+  });
+  assert.deepEqual(violations, []);
+});
+
+test("a claim at the manifest ceiling passes", () => {
+  const violations = [];
+  checkClaimCeilings({
+    manifest: { ceiling: "executed" },
+    blueprint: {
+      ceiling: { ceiling: "executed" },
+      claims: [{ id: "claim", ceiling: "executed" }],
+    },
+    add: (code, subject, detail) => violations.push({ code, subject, detail }),
+  });
+  assert.deepEqual(violations, []);
+});
+
+test("the packaged checker and mutator are byte-identical to the repo", async () => {
+  const result = await buildPackage();
+  const root = await unpack(result);
+  const packaged = (await walk(root)).filter(
+    (name) =>
+      name.startsWith("audit/") &&
+      name.endsWith(".mjs") &&
+      name !== "audit/mutate.mjs",
+  );
+  assert.equal(packaged.includes("audit/scripts/blueprint-verify.mjs"), true);
+  assert.equal(
+    packaged.includes("audit/ui/blueprint/package-verify.mjs"),
+    true,
+  );
+  for (const name of packaged) {
+    const repoPath = name.replace(/^audit\//, "");
+    const [shipped, source] = await Promise.all([
+      readFile(join(root, name)),
+      readFile(new URL(`../../${repoPath}`, import.meta.url)),
+    ]);
+    assert.equal(sha256(shipped), sha256(source), name);
+    // Nothing may reach outside the package: only relative modules and Node
+    // built-ins, so no installed package is needed to run the checker.
+    for (const match of shipped
+      .toString("utf8")
+      .matchAll(/^[ \t]*import\s+(?:[^"']*?\s+from\s+)?["']([^"']+)["']/gm)) {
+      assert.match(
+        match[1],
+        /^(\.{1,2}\/|node:)/,
+        `${name} imports ${match[1]}`,
+      );
+    }
+  }
+  assert.equal(
+    sha256(await readFile(join(root, "audit", "mutate.mjs"))),
+    sha256(await readFile(new URL("./proofs.mjs", import.meta.url))),
+  );
+});
+
+test("the unpacked package verifies and disproves itself with node alone", async () => {
+  const result = await buildPackage();
+  const root = await unpack(result);
+  const cli = join(root, "audit", "scripts", "blueprint-verify.mjs");
+  const positive = await run(process.execPath, [cli, "."], { cwd: root });
+  assert.equal(positive.stdout.includes("Gate: pass"), true);
+  assert.equal(positive.stdout.includes("0 Violations"), true);
+
+  // Every shipped proof runs from the unpacked copy: the mutator writes the
+  // defect, the packaged checker refuses it with its declared codes.
+  const document = JSON.parse(
+    await readFile(join(root, "audit", "proofs.json"), "utf8"),
+  );
+  const outRoot = await mkdtemp(join(tmpdir(), "rea-shipped-proofs-"));
+  for (const proof of document.proofs) {
+    const out = join(outRoot, proof.id);
+    await run(
+      process.execPath,
+      [join(root, "audit", "mutate.mjs"), root, proof.id, out],
+      {
+        cwd: root,
+      },
+    );
+    const failed = await run(process.execPath, [cli, out], { cwd: root }).then(
+      () => null,
+      (error) => error,
+    );
+    assert.equal(failed?.code, 1, `${proof.id}: ${failed?.stdout ?? "exit 0"}`);
+    const output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    for (const code of proof.expect.codes) {
+      assert.equal(output.includes(code), true, `${proof.id} reports ${code}`);
+    }
+  }
+});
+
+test("every proof the package ships fails with exactly its codes", async () => {
+  const result = await buildPackage();
+  const root = await unpack(result);
+  const document = JSON.parse(
+    await readFile(join(root, "audit", "proofs.json"), "utf8"),
+  );
+  assert.deepEqual(
+    document.proofs.map((proof) => proof.id),
+    PROOFS.map((proof) => proof.id),
+  );
+  // The shipped mutator is the implementation the tests run, byte for byte.
+  const shipped = await readFile(join(root, "audit", "mutate.mjs"));
+  const source = await readFile(new URL("./proofs.mjs", import.meta.url));
+  assert.equal(shipped.equals(source), true);
+
+  const outRoot = await mkdtemp(join(tmpdir(), "rea-proofs-"));
+  for (const proof of document.proofs) {
+    assert.equal(proof.expect.exit, 1, proof.id);
+    const out = join(outRoot, proof.id);
+    await mutatePackage({ root, out, proof: proof.id });
+    const report = await verifyPackageDir(out);
+    assert.equal(report.ok, false, proof.id);
+    const codes = [
+      ...new Set(report.violations.map((item) => item.code)),
+    ].sort();
+    assert.deepEqual(codes, [...proof.expect.codes].sort(), proof.id);
   }
 });

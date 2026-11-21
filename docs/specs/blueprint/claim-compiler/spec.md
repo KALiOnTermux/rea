@@ -299,7 +299,13 @@ expected verdict set.
 `npm run blueprint:verify -- <paketverzeichnis>` checks an unpacked package
 without the repository: it re-runs the gate, the manifest hashes, every claim's
 evidence digest and selector, every path the package references, and the ledger
-against the denominator the manifest declares. Each defect keeps one code: a
+against the denominator the manifest declares. The checker itself ships with the
+archive: `audit/scripts/blueprint-verify.mjs` and its import closure under
+`audit/ui/blueprint/` are byte-identical copies of `scripts/blueprint-verify.mjs`
+and `ui/blueprint/`, and a test compares their SHA-256, so the packaged checker
+cannot drift from the tested one. `node audit/scripts/blueprint-verify.mjs .`
+inside the unpacked download therefore runs the same check with `node` alone — no
+repository module, no installed package, no network. Each defect keeps one code: a
 missing evidence file is `claim.evidence.unresolved` (from the gate), while
 `claim.evidence.selector_unresolved` is reserved for a selector that fails inside
 bytes the package does contain. The denominator comparison distinguishes a
@@ -307,7 +313,10 @@ removed unit (`ledger.unit.missing`), an added one
 (`ledger.unit.unexpected`) and a reclassified one with the same total
 (`ledger.unit.reclassified`); a manifest that declares neither denominator nor
 determinism rule is `manifest.denominator.undeclared` /
-`manifest.determinism.undeclared`.
+`manifest.determinism.undeclared`. No claim may stand above the ceiling the
+manifest promises: such a claim is `claim.ceiling.exceeds_manifest`. A claim
+that also exceeds the blueprint's run ceiling keeps the gate's
+`claim.ceiling.exceeds_run`, so one defect is reported once.
 
 Both documents carry the same declarations and are checked against them, so the
 readable ceiling cannot drift from the declared one. `BLUEPRINT.md` prints
@@ -322,14 +331,21 @@ marked as empty is `docs.section.empty_unmarked`.
 `MANIFEST.json#determinism` states the rule the build actually follows: entry
 sort order, pinned `produced_at` outside every digest, ZIP timestamps derived from
 `produced_at` in UTC, no clock or environment read in `compile`, and the scope
-(evidence ceiling plus `downgraded_by`) the rule holds for. An unpacked
+(evidence ceiling plus `downgraded_by`) the rule holds for. Two builds that
+differ only in `produced_at` therefore produce identical bytes everywhere except
+`MANIFEST.json` and the ZIP time fields; `ui/blueprint/package-verify.test.mjs`
+holds the build to that. An unpacked
 package contains `BLUEPRINT.md`, `AGENT-PROMPT.md`, `blueprint.json`,
 `README.txt`, `ledger.json`, `acceptance.json`, `MANIFEST.json`,
 `GATE-REPORT.json` (only when the gate found violations), `schemas/`
 (`claims`, `ledger`, `manifest`, `flows`), `flows/flows.json`, `specs/ui.md`,
-`specs/logic.md`, `evidence/` and `surface/` (DOM, screenshot, manifest,
-resources, plus `accessibility.txt` and `storage.json` when the capture has
-them). A failed criterion is reported as a _blueprint_ defect
+`specs/logic.md`, `audit/`, `evidence/` and `surface/` (DOM, screenshot,
+manifest, resources, plus `accessibility.txt` and `storage.json` when the capture
+has them). `audit/proofs.json` names the negative proofs the archive carries,
+`audit/mutate.mjs` reproduces each one as a copy with exactly one defect,
+`audit/scripts/blueprint-verify.mjs` is the packaged checker, and
+`audit/README.md` states the commands and the expected codes: every proof ends
+with exit 1 and exactly the codes it names. A failed criterion is reported as a _blueprint_ defect
 (ambiguity or missing evidence) unless the corpus marks it `rebuild-defect`.
 
 The harness never builds the rebuild itself and never executes the original
@@ -337,20 +353,20 @@ target.
 
 ## 11. Requirements
 
-| ID  | Requirement                                                                                           |
-| --- | ----------------------------------------------------------------------------------------------------- |
+| ID  | Requirement                                                                                                                |
+| --- | -------------------------------------------------------------------------------------------------------------------------- |
 | R1  | `claims.schema.json`, `ledger.schema.json`, `manifest.schema.json` and `flows.schema.json` validate every produced package |
-| R2  | Every claim has `id`, `statement`, `kind`, `ceiling`, `evidence`, `falsifier`                         |
-| R3  | `observed` has evidence, `derived` has derivation, `assumed` has resolution + `inferred-only`         |
-| R4  | The run ceiling follows the class matrix and is recorded with its forcing probe                       |
-| R5  | The ledger denominator comes from named probes; set equality is enforced                              |
-| R6  | `coverage` and `completeness.status` derive from the ledger and the gate only                         |
-| R7  | `compile` is pure; two invocations produce identical bytes                                            |
-| R8  | The gate is fail-closed and names a violation code per failure                                        |
-| R9  | Acceptance criteria reference checks; unexecutable checks block `complete`                            |
-| R10 | `MANIFEST.json` hashes every packaged file and verifies offline                                       |
-| R11 | The three-kind separation appears in `BLUEPRINT.md` and in `blueprint.json`                           |
-| R12 | Existing evidence resolution semantics and `blueprint-evidence.test.mjs` keep passing                 |
+| R2  | Every claim has `id`, `statement`, `kind`, `ceiling`, `evidence`, `falsifier`                                              |
+| R3  | `observed` has evidence, `derived` has derivation, `assumed` has resolution + `inferred-only`                              |
+| R4  | The run ceiling follows the class matrix and is recorded with its forcing probe                                            |
+| R5  | The ledger denominator comes from named probes; set equality is enforced                                                   |
+| R6  | `coverage` and `completeness.status` derive from the ledger and the gate only                                              |
+| R7  | `compile` is pure; two invocations produce identical bytes                                                                 |
+| R8  | The gate is fail-closed and names a violation code per failure                                                             |
+| R9  | Acceptance criteria reference checks; unexecutable checks block `complete`                                                 |
+| R10 | `MANIFEST.json` hashes every packaged file and verifies offline                                                            |
+| R11 | The three-kind separation appears in `BLUEPRINT.md` and in `blueprint.json`                                                |
+| R12 | Existing evidence resolution semantics and `blueprint-evidence.test.mjs` keep passing                                      |
 
 ## 12. Acceptance of this feature
 

@@ -24,7 +24,9 @@ import {
   renderPrompt,
 } from "./blueprint/render.mjs";
 import { Bundle, hashFile, sha256 } from "./blueprint-zip.mjs";
+import { auditParts } from "./blueprint/audit-bundle.mjs";
 import { packageParts } from "./blueprint/package-parts.mjs";
+import { auditReadme, proofsDocument } from "./blueprint/proofs.mjs";
 
 const MAX_TEXT = 4000;
 
@@ -3541,8 +3543,10 @@ export async function buildBlueprint(config) {
     // resolve the same evidence, otherwise a selector that only one pass can read
     // would surface as "the gate did not converge" instead of the violation.
     readFile: (path) => {
-      if (path === "BLUEPRINT.md") return Buffer.from(compiled.markdown, "utf8");
-      if (path === "AGENT-PROMPT.md") return Buffer.from(compiled.prompt, "utf8");
+      if (path === "BLUEPRINT.md")
+        return Buffer.from(compiled.markdown, "utf8");
+      if (path === "AGENT-PROMPT.md")
+        return Buffer.from(compiled.prompt, "utf8");
       return bundleEntryBuffer(ctx, path) ?? undefined;
     },
   });
@@ -3592,11 +3596,18 @@ export async function buildBlueprint(config) {
       "schemas/          JSON-Schemas für Behauptungen, Ledger, Manifest und Flows.",
       "flows/            Aufgenommene Abläufe als JSON (Schritt, Ziel, Beleg).",
       "specs/            UI- und Logik-Spec für den Nachbau.",
+      "audit/            Selbstprüfung: Paket-Prüfer, Mutator und erwartete Gate-Codes.",
       "evidence/         Aufnahmen, Analysen und Werkzeugergebnisse.",
       "source/           Exportierte Skripte oder dekompilierter Code.",
       "surface/          DOM, Screenshot, Manifest, Ressourcen.",
       "",
       "Behauptungen stehen in BLUEPRINT.md, Abschnitt 5-7; Abnahmekriterien in Abschnitt 8, offene Punkte in Abschnitt 9.",
+      "",
+      "Grenzen dieses Pakets",
+      "Dieses Archiv ist aus dem committeten Corpus-Fixture gebaut; die dort",
+      "ausgewiesenen Lücken stehen in BLUEPRINT.md, Abschnitt 9, und in blueprint.json.",
+      "Der ursprüngliche 22-Claim-Capture ist nicht im Repository erhalten (er lag nur",
+      "im gitignorierten dist/) und deshalb nicht Teil dieses Archivs.",
     ].join("\n"),
   );
 
@@ -3613,6 +3624,25 @@ export async function buildBlueprint(config) {
   // Flows and specs are package parts, not extras: a rebuild needs them and the
   // reference check in `package-verify` resolves them inside the unpacked package.
   for (const [name, contents] of Object.entries(packageParts(bp))) {
+    ctx.bundle.addData(name, contents);
+  }
+
+  // The negative proofs travel with the archive: the mutator is this module's
+  // own source, so there is no second implementation to drift.
+  ctx.bundle.addData(
+    "audit/mutate.mjs",
+    await readFile(new URL("./blueprint/proofs.mjs", import.meta.url), "utf8"),
+  );
+  ctx.bundle.addData(
+    "audit/proofs.json",
+    `${JSON.stringify(proofsDocument(), null, 2)}\n`,
+  );
+  ctx.bundle.addData("audit/README.md", auditReadme());
+
+  // The checker itself travels too, byte for byte, so the archive can be
+  // verified with `node` alone. Its imports are copied at the same relative
+  // paths, which is why no file needs rewriting.
+  for (const [name, contents] of await auditParts()) {
     ctx.bundle.addData(name, contents);
   }
 
