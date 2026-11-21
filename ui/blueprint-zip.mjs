@@ -127,7 +127,9 @@ export class Bundle {
       } catch {
         return;
       }
-      entries.sort((left, right) => left.name.localeCompare(right.name));
+      entries.sort((left, right) =>
+        left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+      );
       for (const entry of entries) {
         const full = join(directory, entry.name);
         if (entry.isSymbolicLink()) continue;

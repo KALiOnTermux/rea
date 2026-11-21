@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { SELECTOR_TYPES, resolveEvidence, resolveSelector } from "./evidence.mjs";
+import {
+  SELECTOR_TYPES,
+  resolveEvidence,
+  resolveSelector,
+} from "./evidence.mjs";
 
 const json = (value) => Buffer.from(JSON.stringify(value), "utf8");
 const capture = json({
@@ -38,7 +42,10 @@ test("request indexes the recorded requests", () => {
   assert.deepEqual(resolveSelector(capture, { type: "request", index: 1 }), {
     ok: true,
   });
-  assert.equal(resolveSelector(capture, { type: "request", index: 2 }).ok, false);
+  assert.equal(
+    resolveSelector(capture, { type: "request", index: 2 }).ok,
+    false,
+  );
   assert.match(
     resolveSelector(capture, { type: "request", index: 2 }).reason,
     /Anfrage #2/,
@@ -57,8 +64,14 @@ test("dom uses the acceptance matcher and does not match loosely", () => {
     resolveSelector(html, { type: "dom", path: 'a[href="/orders"]' }),
     { ok: true },
   );
-  assert.equal(resolveSelector(html, { type: "dom", path: "#missing" }).ok, false);
-  assert.equal(resolveSelector(html, { type: "dom", path: "#buy-now" }).ok, false);
+  assert.equal(
+    resolveSelector(html, { type: "dom", path: "#missing" }).ok,
+    false,
+  );
+  assert.equal(
+    resolveSelector(html, { type: "dom", path: "#buy-now" }).ok,
+    false,
+  );
   assert.equal(
     resolveSelector(html, { type: "dom", path: 'a[href="/orders-old"]' }).ok,
     false,
@@ -86,18 +99,36 @@ test("lines counts CRLF lines and refuses a range past the end", () => {
   assert.deepEqual(resolveSelector(text, { type: "lines", from: 1, to: 3 }), {
     ok: true,
   });
-  assert.equal(resolveSelector(text, { type: "lines", from: 2, to: 4 }).ok, false);
-  assert.equal(resolveSelector(text, { type: "lines", from: 3, to: 2 }).ok, false);
-  assert.equal(resolveSelector(text, { type: "lines", from: 0, to: 1 }).ok, false);
+  assert.equal(
+    resolveSelector(text, { type: "lines", from: 2, to: 4 }).ok,
+    false,
+  );
+  assert.equal(
+    resolveSelector(text, { type: "lines", from: 3, to: 2 }).ok,
+    false,
+  );
+  assert.equal(
+    resolveSelector(text, { type: "lines", from: 0, to: 1 }).ok,
+    false,
+  );
 });
 
 test("byte-range measures raw bytes", () => {
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x10]);
-  assert.deepEqual(resolveSelector(png, { type: "byte-range", from: 0, to: 7 }), {
-    ok: true,
-  });
-  assert.equal(resolveSelector(png, { type: "byte-range", from: 0, to: 8 }).ok, false);
-  assert.equal(resolveSelector(png, { type: "byte-range", from: 4, to: 4 }).ok, false);
+  assert.deepEqual(
+    resolveSelector(png, { type: "byte-range", from: 0, to: 7 }),
+    {
+      ok: true,
+    },
+  );
+  assert.equal(
+    resolveSelector(png, { type: "byte-range", from: 0, to: 8 }).ok,
+    false,
+  );
+  assert.equal(
+    resolveSelector(png, { type: "byte-range", from: 4, to: 4 }).ok,
+    false,
+  );
 });
 
 test("an unknown selector type is refused, never silent", () => {

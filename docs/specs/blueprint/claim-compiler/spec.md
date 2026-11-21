@@ -348,6 +348,18 @@ has them). `audit/proofs.json` names the negative proofs the archive carries,
 with exit 1 and exactly the codes it names. A failed criterion is reported as a _blueprint_ defect
 (ambiguity or missing evidence) unless the corpus marks it `rebuild-defect`.
 
+The archive itself is reproducible and committed. `npm run blueprint:build`
+(`node scripts/blueprint-build.mjs`) rebuilds
+`dist/blueprint-1.0.0-corpus.zip` from
+`ui/blueprint/corpus/web-fixture/blueprint/capture.json` at the pinned
+`produced_at` `2026-11-21T00:30:00.000Z`. The build imports only
+`ui/blueprint*` and `node:` modules, so a fresh clone without `node_modules`
+and without network access yields the same bytes; `--check` rebuilds into a
+temporary directory and compares the SHA-256 with the committed archive. Entry
+order comes from a code-unit comparison, never from locale collation, so the ICU
+locale of the build host cannot change the archive. The committed artifact is
+`sha256 4fa79580e2e73c5e8e5600c1306174960ce36ca418e4f06103637ecbb5f8f533`.
+
 The harness never builds the rebuild itself and never executes the original
 target.
 

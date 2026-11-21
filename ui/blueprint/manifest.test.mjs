@@ -119,7 +119,12 @@ test("buildManifest records the requested ceiling and its forcing probes", () =>
 test("the manifest declares the fixed denominator and its determinism rule", () => {
   const manifest = build({
     denominators: [
-      { class: "request", probe: "web.request-scan", items: 2, blind_spots: [] },
+      {
+        class: "request",
+        probe: "web.request-scan",
+        items: 2,
+        blind_spots: [],
+      },
       { class: "asset", probe: "web.asset-scan", items: 1 },
     ],
   });

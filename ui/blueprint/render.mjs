@@ -1199,8 +1199,11 @@ function agentKindGuide(kind, sourceIncluded = true) {
 
 export function renderPrompt(compiled) {
   const bp = compiled.blueprint;
-  const { assumed, countLine: claimCountLine, downgradeLine } =
-    claimDeclaration(compiled, bp);
+  const {
+    assumed,
+    countLine: claimCountLine,
+    downgradeLine,
+  } = claimDeclaration(compiled, bp);
   const kind = blueprintKind(bp);
   const guide = agentKindGuide(kind, bp.source_included !== false);
   const counted = `${bp.bundle.files} Dateien, davon ${bp.evidence.length} Beweise`;

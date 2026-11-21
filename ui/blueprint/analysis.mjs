@@ -194,8 +194,7 @@ function webObservationUnits(targetClass, ceiling, facts) {
       items: webRouteItems(facts),
       statement: (item) =>
         `${item.subject} ist in der Aufnahme als geladene Seite belegt.`,
-      limit:
-        "nur Ziele aufgezeichneter Schritte und statisch gefundene Routen",
+      limit: "nur Ziele aufgezeichneter Schritte und statisch gefundene Routen",
       ceiling: "statically-evidenced",
       // A pointer observation has no acceptance kind of its own; the route
       // criterion replays the URLs, so the ledger entry is the falsifier here.
@@ -216,7 +215,9 @@ function webObservationUnits(targetClass, ceiling, facts) {
           evidence: [
             { path: item.source.path, selector: { ...item.source.selector } },
           ],
-          falsifier: group.falsifier ? group.falsifier(item) : `acceptance.${id}`,
+          falsifier: group.falsifier
+            ? group.falsifier(item)
+            : `acceptance.${id}`,
           limits: [group.limit],
         }),
         entry: {

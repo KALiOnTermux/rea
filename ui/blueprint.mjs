@@ -73,10 +73,14 @@ function countBy(items, select) {
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   return [...counts]
-    .sort(
-      (left, right) =>
-        right[1] - left[1] || String(left[0]).localeCompare(String(right[0])),
-    )
+    .sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      // Code units, not locale collation: the archive must not depend on the
+      // host's ICU locale.
+      const a = String(left[0]);
+      const b = String(right[0]);
+      return a < b ? -1 : a > b ? 1 : 0;
+    })
     .map(([name, count]) => ({ name, count }));
 }
 
@@ -3811,7 +3815,9 @@ async function listFiles(root, filter = () => true, limit = 5000) {
     } catch {
       return;
     }
-    entries.sort((left, right) => left.name.localeCompare(right.name));
+    entries.sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
     for (const entry of entries) {
       if (result.length >= limit) return;
       const full = join(directory, entry.name);

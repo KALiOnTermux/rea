@@ -402,8 +402,7 @@ const DOM = '<button id="buy">Kaufen</button>';
 /** Adds a claim whose only evidence is `surface/dom.html` and resolves it. */
 function withDomClaim(pkg, selector) {
   pkg.ctx.files.push("surface/dom.html");
-  pkg.ctx.readFile = (path) =>
-    path === "surface/dom.html" ? DOM : DOCS[path];
+  pkg.ctx.readFile = (path) => (path === "surface/dom.html" ? DOM : DOCS[path]);
   return addClaim(
     pkg,
     rawClaim({
